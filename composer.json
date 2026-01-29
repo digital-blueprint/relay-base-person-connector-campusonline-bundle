@@ -1,0 +1,71 @@
+{
+    "name": "dbp/relay-base-person-connector-campusonline-bundle",
+    "description": "DBP Relay Base Person Connector for Campusonline",
+    "type": "symfony-bundle",
+    "license": "AGPL-3.0-or-later",
+    "require": {
+        "php": ">=8.2",
+        "ext-json": "*",
+        "api-platform/metadata": "^4.1",
+        "api-platform/openapi": "^4.1",
+        "dbp/relay-core-bundle": "^0.1.220",
+        "symfony/config": "^6.4 || ^7.4",
+        "symfony/dependency-injection": "^6.4 || ^7.4",
+        "symfony/framework-bundle": "^6.4 || ^7.4",
+        "symfony/http-kernel": "^6.4 || ^7.4",
+        "symfony/serializer": "^6.4 || ^7.4"
+    },
+    "require-dev": {
+        "api-platform/symfony": "^4.1",
+        "friendsofphp/php-cs-fixer": "^3.50",
+        "phpstan/phpstan": "^2.1.17",
+        "phpstan/phpstan-phpunit": "^2.0.6",
+        "phpstan/phpstan-symfony": "^2.0.6",
+        "phpunit/phpunit": "^11.1",
+        "symfony/browser-kit": "^6.4 || ^7.4",
+        "symfony/http-client": "^6.4 || ^7.4",
+        "symfony/monolog-bundle": "^3.10 || ^4.0",
+        "symfony/phpunit-bridge": "^7.0.4",
+        "symfony/runtime": "^6.4 || ^7.4"
+    },
+    "autoload": {
+        "psr-4": {
+            "Dbp\\Relay\\BasePersonConnectorCampusonlineBundle\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Dbp\\Relay\\BasePersonConnectorCampusonlineBundle\\Tests\\": "tests/"
+        }
+    },
+    "config": {
+        "sort-packages": true,
+        "platform": {
+            "php": "8.2"
+        },
+        "allow-plugins": {
+            "symfony/runtime": true
+        }
+    },
+    "scripts": {
+        "test": [
+            "@php vendor/bin/phpunit"
+        ],
+        "phpstan": [
+            "@php vendor/bin/phpstan analyze --ansi"
+        ],
+        "lint": [
+            "@composer run cs",
+            "@composer run phpstan"
+        ],
+        "cs-fix": [
+            "@php vendor/bin/php-cs-fixer --ansi fix"
+        ],
+        "cs": [
+            "@php vendor/bin/php-cs-fixer --ansi fix --dry-run --diff"
+        ],
+        "coverage": [
+            "@php -dxdebug.mode=coverage vendor/bin/phpunit --coverage-html _coverage"
+        ]
+    }
+}

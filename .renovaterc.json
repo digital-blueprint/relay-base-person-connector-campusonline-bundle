@@ -1,0 +1,20 @@
+{
+  "extends": [
+    "config:base",
+    "group:allNonMajor",
+    "schedule:weekends",
+    ":automergePatch"
+  ],
+  "ignorePresets": [":prHourlyLimit2"],
+  "rangeStrategy": "update-lockfile",
+  "lockFileMaintenance": {
+    "enabled": true
+  },
+  "constraintsFiltering": "strict",
+  "packageRules": [
+    {
+      "matchPackagePrefixes": ["symfony/"],
+      "allowedVersions": "<8"
+    }
+  ]
+}

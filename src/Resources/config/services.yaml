@@ -1,0 +1,5 @@
+services:
+  Dbp\Relay\BasePersonConnectorCampusonlineBundle\Service\:
+    resource: '../../Service'
+    autowire: true
+    autoconfigure: true
