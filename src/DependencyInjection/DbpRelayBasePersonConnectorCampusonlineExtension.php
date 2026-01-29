@@ -4,16 +4,18 @@ declare(strict_types=1);
 
 namespace Dbp\Relay\BasePersonConnectorCampusonlineBundle\DependencyInjection;
 
+use Dbp\Relay\BasePersonConnectorCampusonlineBundle\Cron\CacheRefreshCronJob;
 use Dbp\Relay\BasePersonConnectorCampusonlineBundle\Service\PersonProvider;
-use Dbp\Relay\CoreBundle\Extension\ExtensionTrait;
+use Dbp\Relay\CoreBundle\Doctrine\DoctrineConfiguration;
 use Symfony\Component\Config\FileLocator;
 use Symfony\Component\DependencyInjection\ContainerBuilder;
+use Symfony\Component\DependencyInjection\Extension\PrependExtensionInterface;
 use Symfony\Component\DependencyInjection\Loader\YamlFileLoader;
 use Symfony\Component\HttpKernel\DependencyInjection\ConfigurableExtension;
 
-class DbpRelayBasePersonConnectorCampusonlineExtension extends ConfigurableExtension
+class DbpRelayBasePersonConnectorCampusonlineExtension extends ConfigurableExtension implements PrependExtensionInterface
 {
-    use ExtensionTrait;
+    public const ENTITY_MANAGER_ID = 'dbp_relay_base_person_connector_campusonline_bundle';
 
     public function loadInternal(array $mergedConfig, ContainerBuilder $container): void
     {
@@ -25,5 +27,22 @@ class DbpRelayBasePersonConnectorCampusonlineExtension extends ConfigurableExten
 
         $container->getDefinition(PersonProvider::class)
             ->addMethodCall('setConfig', [$mergedConfig]);
+
+        $container->getDefinition(CacheRefreshCronJob::class)
+            ->addMethodCall('setConfig', [$mergedConfig]);
+    }
+
+    public function prepend(ContainerBuilder $container): void
+    {
+        $configs = $container->getExtensionConfig($this->getAlias());
+        $config = $this->processConfiguration(new Configuration(), $configs);
+
+        DoctrineConfiguration::prependEntityManagerConfig($container, self::ENTITY_MANAGER_ID,
+            $config[Configuration::DATABASE_URL],
+            __DIR__.'/../Entity',
+            'Dbp\Relay\BasePersonConnectorCampusonlineBundle\Entity');
+        DoctrineConfiguration::prependMigrationsConfig($container,
+            __DIR__.'/../Migrations',
+            'Dbp\Relay\BasePersonConnectorCampusonlineBundle\Migrations');
     }
 }

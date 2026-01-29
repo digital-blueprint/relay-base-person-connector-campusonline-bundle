@@ -1,5 +1,21 @@
 services:
+  Dbp\Relay\BasePersonConnectorCampusonlineBundle\Cron\:
+    resource: '../../Cron'
+    autowire: true
+    autoconfigure: true
+
+  Dbp\Relay\BasePersonConnectorCampusonlineBundle\EventSubscriber\:
+    resource: '../../EventSubscriber'
+    autowire: true
+    autoconfigure: true
+
   Dbp\Relay\BasePersonConnectorCampusonlineBundle\Service\:
     resource: '../../Service'
     autowire: true
     autoconfigure: true
+
+  Dbp\Relay\BasePersonConnectorCampusonlineBundle\Service\PersonProvider:
+    autowire: true
+    autoconfigure: true
+    arguments:
+      $entityManager: '@doctrine.orm.dbp_relay_base_person_connector_campusonline_bundle_entity_manager'
