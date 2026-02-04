@@ -202,6 +202,11 @@ class PersonProvider implements PersonProviderInterface, LoggerAwareInterface
     {
         $this->eventDispatcher->onNewOperation($options);
 
+        //        Options::setSort($options, new Sort([
+        //            Sort::createSortField('familyName', Sort::ASCENDING_DIRECTION),
+        //            Sort::createSortField('givenName', Sort::ASCENDING_DIRECTION),
+        //        ]));
+
         $preEvent = new PersonPreEvent($options, null, $this);
         $this->eventDispatcher->dispatch($preEvent);
         $options = $preEvent->getOptions();
@@ -306,28 +311,14 @@ class PersonProvider implements PersonProviderInterface, LoggerAwareInterface
                         ->iContains('familyName', $searchTerm)
                         ->end();
                 }
+                $combinedFilter = $filterTreeBuilder->createFilter();
             } catch (FilterException $filterException) {
                 $this->logger->error('failed to build filter for person search: '.$filterException->getMessage(), [$filterException]);
                 throw new \RuntimeException('failed to build filter for person search');
             }
         }
 
-        $pathMapping = [];
-        foreach (CachedPerson::BASE_ENTITY_ATTRIBUTE_MAPPING as $attributeName => $columnName) {
-            $pathMapping[$attributeName] = $CACHED_PERSON_ENTITY_ALIAS.'.'.$columnName;
-        }
-
-        $localDataSourceAttributes = array_merge(
-            array_keys(CachedPerson::LOCAL_DATA_SOURCE_ATTRIBUTES),
-            PersonEventSubscriber::LOCAL_DATA_SOURCE_ATTRIBUTES
-        );
-        foreach ($localDataSourceAttributes as $localDataSourceAttribute) {
-            $pathMapping[$localDataSourceAttribute] = $CACHED_PERSON_ENTITY_ALIAS.'.'.$localDataSourceAttribute;
-        }
-
         if ($filter = Options::getFilter($options)) {
-            FilterTools::mapConditionPaths($filter, $pathMapping);
-
             try {
                 $combinedFilter = $combinedFilter ?
                     $combinedFilter->combineWith($filter) : $filter;
@@ -337,12 +328,31 @@ class PersonProvider implements PersonProviderInterface, LoggerAwareInterface
             }
         }
 
+        $sort = Options::getSort($options);
+
+        $pathMapping = [];
+        if ($combinedFilter !== null || $sort !== null) {
+            $pathMapping = array_map(
+                function ($columnName) use ($CACHED_PERSON_ENTITY_ALIAS) {
+                    return $CACHED_PERSON_ENTITY_ALIAS.'.'.$columnName;
+                }, CachedPerson::BASE_ENTITY_ATTRIBUTE_MAPPING);
+
+            $localDataSourceAttributes = array_merge(
+                array_keys(CachedPerson::LOCAL_DATA_SOURCE_ATTRIBUTES),
+                PersonEventSubscriber::LOCAL_DATA_SOURCE_ATTRIBUTES
+            );
+            foreach ($localDataSourceAttributes as $localDataSourceAttribute) {
+                $pathMapping[$localDataSourceAttribute] = $CACHED_PERSON_ENTITY_ALIAS.'.'.$localDataSourceAttribute;
+            }
+        }
+
         $queryBuilder = $this->entityManager->createQueryBuilder();
         $queryBuilder
             ->select($CACHED_PERSON_ENTITY_ALIAS)
             ->from(CachedPerson::class, $CACHED_PERSON_ENTITY_ALIAS);
 
         if ($combinedFilter !== null) {
+            FilterTools::mapConditionPaths($combinedFilter, $pathMapping);
             try {
                 QueryHelper::addFilter($queryBuilder, $combinedFilter);
             } catch (\Exception $exception) {
@@ -351,12 +361,7 @@ class PersonProvider implements PersonProviderInterface, LoggerAwareInterface
             }
         }
 
-        Options::setSort($options, new Sort([
-            Sort::createSortField('familyName', Sort::ASCENDING_DIRECTION),
-            Sort::createSortField('givenName', Sort::ASCENDING_DIRECTION),
-        ]));
-
-        if ($sort = Options::getSort($options)) {
+        if ($sort !== null) {
             foreach ($sort->getSortFields() as $sortField) {
                 if ($column = $pathMapping[Sort::getPath($sortField)] ?? null) {
                     $queryBuilder->addOrderBy($column, Sort::getDirection($sortField) === Sort::DESCENDING_DIRECTION ? 'DESC' : 'ASC');
