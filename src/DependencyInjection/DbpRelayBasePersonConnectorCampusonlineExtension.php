@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Dbp\Relay\BasePersonConnectorCampusonlineBundle\DependencyInjection;
 
 use Dbp\Relay\BasePersonConnectorCampusonlineBundle\Cron\CacheRefreshCronJob;
+use Dbp\Relay\BasePersonConnectorCampusonlineBundle\EventSubscriber\PersonEventSubscriber;
 use Dbp\Relay\BasePersonConnectorCampusonlineBundle\Service\PersonProvider;
 use Dbp\Relay\CoreBundle\Doctrine\DoctrineConfiguration;
 use Symfony\Component\Config\FileLocator;
@@ -26,6 +27,9 @@ class DbpRelayBasePersonConnectorCampusonlineExtension extends ConfigurableExten
         $loader->load('services.yaml');
 
         $container->getDefinition(PersonProvider::class)
+            ->addMethodCall('setConfig', [$mergedConfig]);
+
+        $container->getDefinition(PersonEventSubscriber::class)
             ->addMethodCall('setConfig', [$mergedConfig]);
 
         $container->getDefinition(CacheRefreshCronJob::class)

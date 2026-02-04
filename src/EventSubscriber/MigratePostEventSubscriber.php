@@ -32,7 +32,7 @@ readonly class MigratePostEventSubscriber implements EventSubscriberInterface
                 $this->personProvider->recreatePersonsCache();
             }
         } catch (\Throwable $throwable) {
-            $output->writeln('Error initializing base course cache: '.$throwable->getMessage());
+            $output->writeln('Error initializing base person cache: '.$throwable->getMessage());
         }
     }
 }

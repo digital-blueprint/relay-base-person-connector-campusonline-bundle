@@ -8,9 +8,9 @@ use Doctrine\ORM\Mapping as ORM;
 
 #[ORM\Table(name: self::TABLE_NAME)]
 #[ORM\Entity]
-class CachedPerson
+class CachedPersonStaging
 {
     use CachedPersonTrait;
 
-    public const TABLE_NAME = 'persons';
+    public const TABLE_NAME = 'persons_staging';
 }
