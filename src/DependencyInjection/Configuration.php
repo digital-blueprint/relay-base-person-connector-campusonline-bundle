@@ -19,6 +19,10 @@ class Configuration implements ConfigurationInterface
     public const CLIENT_SECRET_NODE = 'client_secret';
     public const CACHE_REFRESH_INTERVAL_NODE = 'cache_refresh_interval';
 
+    public const CURRENT_PERSON_IDENTIFIER_EXPRESSION_ATTRIBUTE = 'current_person_identifier_expression';
+
+    private const CURRENT_PERSON_IDENTIFIER_EXPRESSION_ATTRIBUTE_DEFAULT = 'user.getIdentifier()';
+
     private const DATABASE_URL_DEFAULT = 'sqlite:///%kernel.project_dir%/var/persons_cache.db';
 
     public function getConfigTreeBuilder(): TreeBuilder
@@ -28,6 +32,9 @@ class Configuration implements ConfigurationInterface
             ->children()
             ->scalarNode(self::DATABASE_URL)
             ->defaultValue(self::DATABASE_URL_DEFAULT)
+            ->end()
+            ->scalarNode(self::CURRENT_PERSON_IDENTIFIER_EXPRESSION_ATTRIBUTE)
+            ->defaultValue(self::CURRENT_PERSON_IDENTIFIER_EXPRESSION_ATTRIBUTE_DEFAULT)
             ->end()
             ->arrayNode(self::CAMPUS_ONLINE_NODE)
             ->children()

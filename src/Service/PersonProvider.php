@@ -22,6 +22,7 @@ use Dbp\Relay\BasePersonConnectorCampusonlineBundle\Entity\CachedPersonStaging;
 use Dbp\Relay\BasePersonConnectorCampusonlineBundle\Event\PersonPostEvent;
 use Dbp\Relay\BasePersonConnectorCampusonlineBundle\Event\PersonPreEvent;
 use Dbp\Relay\BasePersonConnectorCampusonlineBundle\EventSubscriber\PersonEventSubscriber;
+use Dbp\Relay\CoreBundle\Authorization\AbstractAuthorizationService;
 use Dbp\Relay\CoreBundle\Doctrine\QueryHelper;
 use Dbp\Relay\CoreBundle\Exception\ApiError;
 use Dbp\Relay\CoreBundle\LocalData\LocalDataEventDispatcher;
@@ -38,9 +39,24 @@ use Psr\Log\LoggerAwareTrait;
 use Symfony\Component\EventDispatcher\EventDispatcherInterface;
 use Symfony\Component\HttpFoundation\Response;
 
-class PersonProvider implements PersonProviderInterface, LoggerAwareInterface
+class PersonProvider extends AbstractAuthorizationService implements PersonProviderInterface, LoggerAwareInterface
 {
     use LoggerAwareTrait;
+
+    private const CURRENT_PERSON_IDENTIFIER_AUTHORIZATION_ATTRIBUTE = 'cpi';
+
+    private const ACCOUNT_STATUS_KEYS_TO_FETCH = [
+        AccountsCommon::OK_ACCOUNT_STATUS_KEY,
+        'GESPERRT',
+        'BEENDET',
+        'INAKTIV',
+    ];
+
+    // TODO: make non-const account type keys configurable via config instead of hardcoding them
+    private const ACCOUNT_TYPE_KEYS_TO_FETCH = [
+        'STAFF',
+        'STUDENT',
+    ];
 
     private const PERSON_CLAIMS_TO_FETCH = [
         Common::NAME_CLAIM,
@@ -58,6 +74,9 @@ class PersonProvider implements PersonProviderInterface, LoggerAwareInterface
 
     private ?PersonClaimsApi $personClaimsApi = null;
     private LocalDataEventDispatcher $eventDispatcher;
+    private ?string $currentPersonIdentifier = null;
+    private bool $wasCurrentPersonIdentifierRetrieved = false;
+    private ?Person $currentPerson = null;
 
     /**
      * @var array<string, mixed>
@@ -77,12 +96,19 @@ class PersonProvider implements PersonProviderInterface, LoggerAwareInterface
         private readonly EntityManagerInterface $entityManager,
         EventDispatcherInterface $eventDispatcher)
     {
+        parent::__construct();
+
         $this->eventDispatcher = new LocalDataEventDispatcher('', $eventDispatcher);
     }
 
     public function setConfig(array $config): void
     {
         $this->config = $config[Configuration::CAMPUS_ONLINE_NODE];
+
+        $attributes = [
+            self::CURRENT_PERSON_IDENTIFIER_AUTHORIZATION_ATTRIBUTE => $config[Configuration::CURRENT_PERSON_IDENTIFIER_EXPRESSION_ATTRIBUTE],
+        ];
+        $this->setUpAccessControlPolicies(attributes: $attributes);
     }
 
     public function checkConnection(): void
@@ -97,11 +123,10 @@ class PersonProvider implements PersonProviderInterface, LoggerAwareInterface
     {
         $connection = $this->entityManager->getConnection();
         try {
-            // TODO: make non-const account type keys configurable via config instead of hardcoding them
             $userApi = new UserApi($this->getConnection());
             $userApiQueryParameters = [
-                UserApi::ACCOUNT_STATUS_KEY_QUERY_PARAMETER_NAME => AccountsCommon::OK_ACCOUNT_STATUS_KEY,
-                UserApi::ACCOUNT_TYPE_KEY_QUERY_PARAMETER_NAME => ['STAFF', 'STUDENT'],
+                UserApi::ACCOUNT_STATUS_KEY_QUERY_PARAMETER_NAME => self::ACCOUNT_STATUS_KEYS_TO_FETCH,
+                UserApi::ACCOUNT_TYPE_KEY_QUERY_PARAMETER_NAME => self::ACCOUNT_TYPE_KEYS_TO_FETCH,
             ];
             $nextUsersCursor = null;
             do {
@@ -184,28 +209,40 @@ class PersonProvider implements PersonProviderInterface, LoggerAwareInterface
         $options = $preEvent->getOptions();
 
         try {
-            $cachedPerson = $this->entityManager->getRepository(CachedPerson::class)->find($identifier);
-            if ($cachedPerson === null) {
-                throw new ApiError(Response::HTTP_NOT_FOUND, 'person with ID not found: '.$identifier);
-            }
-        } catch (ApiException $apiException) {
-            throw self::dispatchException($apiException, $identifier);
+            $filter = FilterTreeBuilder::create()
+                ->equals('identifier', $identifier)
+                ->createFilter();
+        } catch (FilterException $filterException) {
+            $this->logger->error('failed to build filter for person identifier query: '.$filterException->getMessage(), [$filterException]);
+            throw new \RuntimeException('failed to build filter for person identifier query');
         }
 
-        $this->currentResultPersonUids = [$cachedPerson->getUid()];
+        if ($filterFromOptions = Options::getFilter($options)) {
+            try {
+                $filter = $filter->combineWith($filterFromOptions);
+            } catch (FilterException $filterException) {
+                $this->logger->error('failed to combine filters for persons query: '.$filterException->getMessage(), [$filterException]);
+                throw new \RuntimeException('failed to combine filters for persons query');
+            }
+        }
 
-        return $this->postProcessPerson(
-            self::createPersonAndExtraDataFromCachedPerson($cachedPerson, $options), $options);
+        Options::setFilter($options, $filter);
+
+        $persons = $this->getPersons(1, 2, $options);
+
+        $numPersons = count($persons);
+        if ($numPersons === 0) {
+            throw ApiError::withDetails(Response::HTTP_NOT_FOUND, sprintf("Person with identifier '%s' could not be found!", $identifier));
+        } elseif ($numPersons > 1) {
+            throw new \RuntimeException(sprintf("multiple persons found for identifier '%s'", $identifier));
+        }
+
+        return $persons[0];
     }
 
     public function getPersons(int $currentPageNumber, int $maxNumItemsPerPage, array $options = []): array
     {
         $this->eventDispatcher->onNewOperation($options);
-
-        //        Options::setSort($options, new Sort([
-        //            Sort::createSortField('familyName', Sort::ASCENDING_DIRECTION),
-        //            Sort::createSortField('givenName', Sort::ASCENDING_DIRECTION),
-        //        ]));
 
         $preEvent = new PersonPreEvent($options, null, $this);
         $this->eventDispatcher->dispatch($preEvent);
@@ -229,15 +266,30 @@ class PersonProvider implements PersonProviderInterface, LoggerAwareInterface
 
     public function getCurrentPersonIdentifier(): ?string
     {
-        return null;
+        return $this->getCurrentPersonIdentifierInternal();
     }
 
     public function getCurrentPerson(array $options = []): ?Person
     {
-        return null;
+        $this->eventDispatcher->onNewOperation($options);
+
+        $currentPerson = null;
+        if (null !== $this->currentPerson
+            && $this->eventDispatcher->checkRequestedAttributesIdentical($this->currentPerson) // TODO core bundle: provide a static method to check
+            || null === Options::getFilter($options)) {
+            $currentPerson = $this->currentPerson;
+        } elseif (null !== ($currentPersonIdentifier = $this->getCurrentPersonIdentifierInternal())) {
+            $currentPerson = $this->getPerson($currentPersonIdentifier, $options);
+        }
+
+        return $currentPerson;
     }
 
     /**
+     * This can't be used to determine employment relationships, since we get
+     * - inactive organizations
+     * - organizations where persons have other functions than employee.
+     *
      * @return string[]
      */
     public function getPersonIdentifiersByOrganization(string $organizationIdentifier): array
@@ -264,11 +316,33 @@ class PersonProvider implements PersonProviderInterface, LoggerAwareInterface
     }
 
     /**
-     * @return string[]|null
+     * This can't be used to determine employment relationships, since we get
+     * - inactive organizations
+     * - organizations where persons have other functions than employee.
+     *
+     * @return string[]
      */
-    public function getOrganizationIdentifiersByPerson(?string $personIdentifier): ?array
+    public function getOrganizationIdentifiersByPerson(?string $personIdentifier): array
     {
-        return null;
+        // NOTE: the CO person-organisations operation needs deduplication.
+        $personFunctionsApi = new PersonOrganisationApi($this->getConnection());
+        $nextCursor = null;
+        $organizationIdentifiers = [];
+        do {
+            $resourcePage = $personFunctionsApi->getPersonOrganisationsCursorBased(
+                queryParameters: [
+                    PersonOrganisationApi::PERSON_UID_QUERY_PARAMETER_NAME => $personIdentifier,
+                ],
+                cursor: $nextCursor,
+                maxNumItems: 1000);
+
+            /** @var PersonOrganisationResource $personOrganisationResource */
+            foreach ($resourcePage->getResources() as $personOrganisationResource) {
+                $organizationIdentifiers[$personOrganisationResource->getOrganisationUid()] = null; // deduplicate via array keys
+            }
+        } while (($nextCursor = $resourcePage->getNextCursor()) !== null);
+
+        return array_keys($organizationIdentifiers);
     }
 
     private function getPersonClaimsApi(): PersonClaimsApi
@@ -501,6 +575,25 @@ class PersonProvider implements PersonProviderInterface, LoggerAwareInterface
         return $personAndExtraData->getPerson();
     }
 
+    /**
+     * @throws ApiError
+     */
+    private function getCurrentPersonIdentifierInternal(): ?string
+    {
+        if (false === $this->wasCurrentPersonIdentifierRetrieved) {
+            try {
+                $this->currentPersonIdentifier = $this->getAttribute(self::CURRENT_PERSON_IDENTIFIER_AUTHORIZATION_ATTRIBUTE);
+                $this->wasCurrentPersonIdentifierRetrieved = true;
+            } catch (\Exception $exception) {
+                $this->logger->error('failed to get current person identifier: '.$exception->getMessage());
+                throw ApiError::withDetails(Response::HTTP_INTERNAL_SERVER_ERROR,
+                    'failed to get current person identifier');
+            }
+        }
+
+        return $this->currentPersonIdentifier;
+    }
+
     private static function createPersonAndExtraDataFromPersonClaimsResource(
         PersonClaimsResource $personClaimsResource, array $options): PersonAndExtraData
     {
@@ -539,15 +632,7 @@ class PersonProvider implements PersonProviderInterface, LoggerAwareInterface
         $cachedPerson->setMatriculationNumber($personClaimsResource->getMatriculationNumber());
         $cachedPerson->setGenderKey($personClaimsResource->getGenderKey());
         $cachedPerson->setTitlePrefix($personClaimsResource->getTitlePrefix());
-        if ($personGroups = $personClaimsResource->getPersonGroups()) {
-            if (in_array(PersonClaimsApi::STUDENT_PERSON_GROUP_KEY, $personGroups, true)) {
-                $cachedPerson->makeStudent();
-            } elseif (in_array(PersonClaimsApi::EMPLOYEE_PERSON_GROUP_KEY, $personGroups, true)) {
-                $cachedPerson->makeEmployee();
-            } elseif (in_array(PersonClaimsApi::EXTERNAL_PERSON_GROUP_KEY, $personGroups, true)) {
-                $cachedPerson->makeExternalPerson();
-            }
-        }
+        // NOTE: person groups are set depending on user account info
 
         return $cachedPerson;
     }

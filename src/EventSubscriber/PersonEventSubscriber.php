@@ -10,14 +10,9 @@ use Dbp\Relay\BasePersonConnectorCampusonlineBundle\Event\PersonPreEvent;
 use Dbp\Relay\BasePersonConnectorCampusonlineBundle\Service\PersonProvider;
 use Dbp\Relay\CoreBundle\LocalData\AbstractLocalDataEventSubscriber;
 use Dbp\Relay\CoreBundle\LocalData\LocalDataPostEvent;
-use Dbp\Relay\CoreBundle\LocalData\LocalDataPreEvent;
-use Dbp\Relay\CoreBundle\Rest\Options;
-use Dbp\Relay\CoreBundle\Rest\Query\Filter\Nodes\ConditionNode;
-use Dbp\Relay\CoreBundle\Rest\Query\Filter\Nodes\OperatorType;
 
 class PersonEventSubscriber extends AbstractLocalDataEventSubscriber
 {
-    public const STAFF_AT_LOCAL_DATA_SOURCE_ATTRIBUTE = 'staffAt';
     public const EMPLOYEE_POSTAL_ADDRESS_SOURCE_ATTRIBUTE = 'employeePostalAddress';
     public const EMPLOYEE_WORK_ADDRESS_SOURCE_ATTRIBUTE = 'employeeWorkAddress';
     public const BUSINESS_CARD_URL_EMPLOYEE_SOURCE_ATTRIBUTE = 'businessCardUrlEmployee';
@@ -27,7 +22,6 @@ class PersonEventSubscriber extends AbstractLocalDataEventSubscriber
     public const WWW_HOMEPAGE_EMPLOYEE_SOURCE_ATTRIBUTE = 'wwwHomepageEmployee';
 
     public const LOCAL_DATA_SOURCE_ATTRIBUTES = [
-        self::STAFF_AT_LOCAL_DATA_SOURCE_ATTRIBUTE,
         self::EMPLOYEE_POSTAL_ADDRESS_SOURCE_ATTRIBUTE,
         self::EMPLOYEE_WORK_ADDRESS_SOURCE_ATTRIBUTE,
         self::BUSINESS_CARD_URL_EMPLOYEE_SOURCE_ATTRIBUTE,
@@ -50,34 +44,6 @@ class PersonEventSubscriber extends AbstractLocalDataEventSubscriber
         parent::__construct('BasePerson');
     }
 
-    protected function onPreEvent(LocalDataPreEvent $preEvent): void
-    {
-        $personIdentifiersToGet = null;
-        $options = $preEvent->getOptions();
-        if ($filter = Options::getFilter($options)) {
-            $filter->mapConditionNodes(
-                function (ConditionNode $conditionNode) use (&$personIdentifiersToGet) {
-                    if ($conditionNode->getPath() === self::STAFF_AT_LOCAL_DATA_SOURCE_ATTRIBUTE) {
-                        if ($conditionNode->getOperator() !== OperatorType::HAS_OPERATOR) {
-                            throw new \RuntimeException(sprintf('Only the %s operator is supported for the "%s" source attribute',
-                                OperatorType::HAS_OPERATOR, self::STAFF_AT_LOCAL_DATA_SOURCE_ATTRIBUTE));
-                        }
-                        if ($personIdentifiersToGet === null) {
-                            $personIdentifiersToGet = $this->personProvider->getPersonIdentifiersByOrganization(
-                                $conditionNode->getValue());
-                        }
-                        $conditionNode = new ConditionNode(
-                            'identifier',
-                            OperatorType::IN_ARRAY_OPERATOR,
-                            $personIdentifiersToGet
-                        );
-                    }
-
-                    return $conditionNode;
-                });
-        }
-    }
-
     protected function getAttributeValue(LocalDataPostEvent $postEvent, array $attributeMapEntry): mixed
     {
         $person = $postEvent->getEntity();
@@ -85,10 +51,6 @@ class PersonEventSubscriber extends AbstractLocalDataEventSubscriber
         $personIdentifier = $person->getIdentifier();
 
         switch ($attributeMapEntry[self::SOURCE_ATTRIBUTE_KEY]) {
-            case self::STAFF_AT_LOCAL_DATA_SOURCE_ATTRIBUTE:
-                $this->personProvider->getAndCacheCurrentResultPersonsFromApi();
-
-                return $this->personProvider->getOrganizationIdentifiersByPerson($personIdentifier);
             case self::EMPLOYEE_POSTAL_ADDRESS_SOURCE_ATTRIBUTE:
                 $this->personProvider->getAndCacheCurrentResultPersonsFromApi();
 

@@ -147,40 +147,25 @@ trait CachedPersonTrait
         $this->personGroups = $personGroups;
     }
 
-    public function isStudent(): bool
-    {
-        return ($this->personGroups & self::STUDENT_PERSON_GROUP_MASK) === self::STUDENT_PERSON_GROUP_MASK;
-    }
-
-    public function isEmployee(): bool
-    {
-        return ($this->personGroups & self::EMPLOYEE_PERSON_GROUP_MASK) === self::EMPLOYEE_PERSON_GROUP_MASK;
-    }
-
-    public function isExternalPerson(): bool
-    {
-        return ($this->personGroups & self::EXTERNAL_PERSON_GROUP_MASK) === self::EXTERNAL_PERSON_GROUP_MASK;
-    }
-
-    public function makeStudent(): void
-    {
-        $this->personGroups = ($this->personGroups ?? 0) | self::STUDENT_PERSON_GROUP_MASK;
-    }
-
-    public function makeEmployee(): void
-    {
-        $this->personGroups = ($this->personGroups ?? 0) | self::EMPLOYEE_PERSON_GROUP_MASK;
-    }
-
-    public function makeExternalPerson(): void
-    {
-        $this->personGroups = ($this->personGroups ?? 0) | self::EXTERNAL_PERSON_GROUP_MASK;
-    }
-
     public function getLocalDataSourceAttributeValues(): array
     {
         return array_map(function (string $getterMethod) {
             return $this->$getterMethod();
         }, self::LOCAL_DATA_SOURCE_ATTRIBUTES);
+    }
+
+    public static function testIsStudent(int $personGroups): bool
+    {
+        return ($personGroups & self::STUDENT_PERSON_GROUP_MASK) === self::STUDENT_PERSON_GROUP_MASK;
+    }
+
+    public static function testIsEmployee(int $personGroups): bool
+    {
+        return ($personGroups & self::EMPLOYEE_PERSON_GROUP_MASK) === self::EMPLOYEE_PERSON_GROUP_MASK;
+    }
+
+    public static function testIsExternalPerson(int $personGroups): bool
+    {
+        return ($personGroups & self::EXTERNAL_PERSON_GROUP_MASK) === self::EXTERNAL_PERSON_GROUP_MASK;
     }
 }
