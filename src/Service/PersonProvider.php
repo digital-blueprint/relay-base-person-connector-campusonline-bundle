@@ -21,17 +21,17 @@ use Dbp\Relay\BasePersonConnectorCampusonlineBundle\Entity\CachedPerson;
 use Dbp\Relay\BasePersonConnectorCampusonlineBundle\Entity\CachedPersonStaging;
 use Dbp\Relay\BasePersonConnectorCampusonlineBundle\Event\PersonPostEvent;
 use Dbp\Relay\BasePersonConnectorCampusonlineBundle\Event\PersonPreEvent;
-use Dbp\Relay\BasePersonConnectorCampusonlineBundle\EventSubscriber\PersonEventSubscriber;
 use Dbp\Relay\CoreBundle\Authorization\AbstractAuthorizationService;
 use Dbp\Relay\CoreBundle\Doctrine\QueryHelper;
 use Dbp\Relay\CoreBundle\Exception\ApiError;
 use Dbp\Relay\CoreBundle\LocalData\LocalDataEventDispatcher;
 use Dbp\Relay\CoreBundle\Rest\Options;
+use Dbp\Relay\CoreBundle\Rest\Query\Filter\Filter;
 use Dbp\Relay\CoreBundle\Rest\Query\Filter\FilterException;
 use Dbp\Relay\CoreBundle\Rest\Query\Filter\FilterTools;
 use Dbp\Relay\CoreBundle\Rest\Query\Filter\FilterTreeBuilder;
 use Dbp\Relay\CoreBundle\Rest\Query\Pagination\Pagination;
-use Dbp\Relay\CoreBundle\Rest\Query\Sort\Sort;
+use Dbp\Relay\CoreBundle\Rest\Query\Sort\SortTools;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\Tools\Pagination\Paginator;
 use Psr\Log\LoggerAwareInterface;
@@ -58,7 +58,7 @@ class PersonProvider extends AbstractAuthorizationService implements PersonProvi
         'STUDENT',
     ];
 
-    private const PERSON_CLAIMS_TO_FETCH = [
+    private const PERSON_CLAIMS_REQUIRED_FOR_CACHE = [
         Common::NAME_CLAIM,
         Common::DATE_OF_BIRTH_CLAIM,
         Common::EMAIL_CLAIM,
@@ -123,61 +123,7 @@ class PersonProvider extends AbstractAuthorizationService implements PersonProvi
     {
         $connection = $this->entityManager->getConnection();
         try {
-            $userApi = new UserApi($this->getConnection());
-            $userApiQueryParameters = [
-                UserApi::ACCOUNT_STATUS_KEY_QUERY_PARAMETER_NAME => self::ACCOUNT_STATUS_KEYS_TO_FETCH,
-                UserApi::ACCOUNT_TYPE_KEY_QUERY_PARAMETER_NAME => self::ACCOUNT_TYPE_KEYS_TO_FETCH,
-            ];
-            $nextUsersCursor = null;
-            do {
-                $userResourcePage = $userApi->getUsersCursorBased(
-                    queryParameters: $userApiQueryParameters,
-                    cursor: $nextUsersCursor,
-                    maxNumItems: 1000);
-
-                $personsToFetch = [];
-                /** @var UserResource $userResource */
-                foreach ($userResourcePage->getResources() as $userResource) {
-                    $personGroupKeys = 0;
-                    for ($accountIndex = 0; $accountIndex < $userResource->getNumAccounts(); ++$accountIndex) {
-                        if ($userResource->getAccountStatusKey($accountIndex) === AccountsCommon::OK_ACCOUNT_STATUS_KEY) {
-                            $personGroupKeys |= match ($userResource->getAccountTypeKey($accountIndex)) {
-                                'STAFF' => CachedPerson::EMPLOYEE_PERSON_GROUP_MASK,
-                                'STUDENT' => CachedPerson::STUDENT_PERSON_GROUP_MASK,
-                                default => 0,
-                            };
-                        }
-                    }
-                    if ($personGroupKeys !== 0) {
-                        $personsToFetch[$userResource->getPersonUid()] = $personGroupKeys;
-                    }
-                }
-
-                $currentPersonIndex = 0;
-                while ($currentPersonIndex < count($personsToFetch)) {
-                    $personClaimsQueryParameters = [
-                        PersonClaimsApi::PERSON_UID_QUERY_PARAMETER_NAME => array_slice(
-                            array_keys($personsToFetch),
-                            $currentPersonIndex,
-                            self::MAX_NUM_PERSON_UIDS_PER_REQUEST),
-                    ];
-
-                    foreach ($this->getPersonClaimsApi()->getPersonClaimsPageOffsetBased(
-                        queryParameters: $personClaimsQueryParameters,
-                        claims: self::PERSON_CLAIMS_TO_FETCH,
-                        maxNumItems: self::MAX_NUM_PERSON_UIDS_PER_REQUEST) as $personClaimsResource) {
-                        $cachedPersonStaging = self::createCachedPersonStagingFromPersonClaimsResource(
-                            $personClaimsResource);
-                        $cachedPersonStaging->setPersonGroups(
-                            $personsToFetch[$personClaimsResource->getUid()]);
-                        $this->entityManager->persist($cachedPersonStaging);
-                    }
-                    $currentPersonIndex += self::MAX_NUM_PERSON_UIDS_PER_REQUEST;
-                }
-
-                $this->entityManager->flush();
-                $this->entityManager->clear();
-            } while (($nextUsersCursor = $userResourcePage->getNextCursor()) !== null);
+            $this->cachePersonsWithAccountOnly();
 
             $personsStagingTableName = CachedPersonStaging::TABLE_NAME;
             $personsLiveTableName = CachedPerson::TABLE_NAME;
@@ -208,6 +154,7 @@ class PersonProvider extends AbstractAuthorizationService implements PersonProvi
         $identifier = $preEvent->getIdentifier();
         $options = $preEvent->getOptions();
 
+        $filter = null;
         try {
             $filter = FilterTreeBuilder::create()
                 ->equals('identifier', $identifier)
@@ -217,22 +164,11 @@ class PersonProvider extends AbstractAuthorizationService implements PersonProvi
             throw new \RuntimeException('failed to build filter for person identifier query');
         }
 
-        if ($filterFromOptions = Options::getFilter($options)) {
-            try {
-                $filter = $filter->combineWith($filterFromOptions);
-            } catch (FilterException $filterException) {
-                $this->logger->error('failed to combine filters for persons query: '.$filterException->getMessage(), [$filterException]);
-                throw new \RuntimeException('failed to combine filters for persons query');
-            }
-        }
-
-        Options::setFilter($options, $filter);
-
-        $persons = $this->getPersons(1, 2, $options);
+        $persons = $this->getPersonsInternal(1, 2, $filter, $options);
 
         $numPersons = count($persons);
         if ($numPersons === 0) {
-            throw ApiError::withDetails(Response::HTTP_NOT_FOUND, sprintf("Person with identifier '%s' could not be found!", $identifier));
+            throw ApiError::withDetails(Response::HTTP_NOT_FOUND, sprintf("person with identifier '%s' could not be found!", $identifier));
         } elseif ($numPersons > 1) {
             throw new \RuntimeException(sprintf("multiple persons found for identifier '%s'", $identifier));
         }
@@ -248,20 +184,28 @@ class PersonProvider extends AbstractAuthorizationService implements PersonProvi
         $this->eventDispatcher->dispatch($preEvent);
         $options = $preEvent->getOptions();
 
-        try {
-            $persons = [];
-            foreach ($this->getPersonsFromCache(
-                Pagination::getFirstItemIndex($currentPageNumber, $maxNumItemsPerPage),
-                $maxNumItemsPerPage, $options) as $personAndExtraData) {
-                $persons[] = $this->postProcessPerson(
-                    $personAndExtraData,
-                    $options);
+        $filter = null;
+        if ($searchOption = $options[Person::SEARCH_PARAMETER_NAME] ?? null) {
+            try {
+                // the full name MUST contain ALL search terms
+                $filterTreeBuilder = FilterTreeBuilder::create();
+                foreach (explode(' ', $searchOption) as $searchTerm) {
+                    $searchTerm = trim($searchTerm);
+                    $filterTreeBuilder
+                        ->or()
+                        ->iContains('givenName', $searchTerm)
+                        ->iContains('familyName', $searchTerm)
+                        ->end();
+                }
+                $filter = $filterTreeBuilder->createFilter();
+                unset($options[Person::SEARCH_PARAMETER_NAME]);
+            } catch (FilterException $filterException) {
+                $this->logger->error('failed to build filter for person search parameter: '.$filterException->getMessage(), [$filterException]);
+                throw new \RuntimeException('failed to build filter for person search parameter');
             }
-
-            return $persons;
-        } catch (ApiException $apiException) {
-            throw self::dispatchException($apiException);
         }
+
+        return $this->getPersonsInternal($currentPageNumber, $maxNumItemsPerPage, $filter, $options);
     }
 
     public function getCurrentPersonIdentifier(): ?string
@@ -366,100 +310,54 @@ class PersonProvider extends AbstractAuthorizationService implements PersonProvi
     }
 
     /**
-     * @return iterable<PersonAndExtraData>
+     * @return PersonAndExtraData[]
      */
-    private function getPersonsFromCache(int $firstItemIndex, int $maxNumItems, array $options = []): iterable
+    private function getPersonsFromCache(int $firstItemIndex, int $maxNumItems, ?Filter $filter, array $options = []): array
     {
         $CACHED_PERSON_ENTITY_ALIAS = 'p';
 
-        $combinedFilter = null;
-        if ($searchOption = $options[Person::SEARCH_PARAMETER_NAME] ?? null) {
-            try {
-                // the full name MUST contain ALL search terms
-                $filterTreeBuilder = FilterTreeBuilder::create();
-                foreach (explode(' ', $searchOption) as $searchTerm) {
-                    $searchTerm = trim($searchTerm);
-                    $filterTreeBuilder
-                        ->or()
-                        ->iContains('givenName', $searchTerm)
-                        ->iContains('familyName', $searchTerm)
-                        ->end();
-                }
-                $combinedFilter = $filterTreeBuilder->createFilter();
-            } catch (FilterException $filterException) {
-                $this->logger->error('failed to build filter for person search: '.$filterException->getMessage(), [$filterException]);
-                throw new \RuntimeException('failed to build filter for person search');
+        try {
+            $combinedFilter = FilterTreeBuilder::create()->createFilter();
+            if ($filter) {
+                $combinedFilter->combineWith($filter);
             }
-        }
-
-        if ($filter = Options::getFilter($options)) {
-            try {
-                $combinedFilter = $combinedFilter ?
-                    $combinedFilter->combineWith($filter) : $filter;
-            } catch (FilterException $filterException) {
-                $this->logger->error('failed to combine filters for persons query: '.$filterException->getMessage(), [$filterException]);
-                throw new \RuntimeException('failed to combine filters for persons query');
+            if ($filterFromOptions = Options::getFilter($options)) {
+                $combinedFilter->combineWith($filterFromOptions);
             }
-        }
 
-        $sort = Options::getSort($options);
+            $queryBuilder = $this->entityManager->createQueryBuilder();
+            $queryBuilder
+                ->select($CACHED_PERSON_ENTITY_ALIAS)
+                ->from(CachedPerson::class, $CACHED_PERSON_ENTITY_ALIAS);
 
-        $pathMapping = [];
-        if ($combinedFilter !== null || $sort !== null) {
-            $pathMapping = array_map(
-                function ($columnName) use ($CACHED_PERSON_ENTITY_ALIAS) {
-                    return $CACHED_PERSON_ENTITY_ALIAS.'.'.$columnName;
-                }, CachedPerson::BASE_ENTITY_ATTRIBUTE_MAPPING);
+            // NOTE: local data attribute path mapping is done by the PersonEventSubscriber
+            $pathMapping = CachedPerson::BASE_ENTITY_ATTRIBUTE_MAPPING;
 
-            $localDataSourceAttributes = array_merge(
-                array_keys(CachedPerson::LOCAL_DATA_SOURCE_ATTRIBUTES),
-                PersonEventSubscriber::LOCAL_DATA_SOURCE_ATTRIBUTES
-            );
-            foreach ($localDataSourceAttributes as $localDataSourceAttribute) {
-                $pathMapping[$localDataSourceAttribute] = $CACHED_PERSON_ENTITY_ALIAS.'.'.$localDataSourceAttribute;
+            if (false === $combinedFilter->isEmpty()) {
+                FilterTools::mapConditionPaths($combinedFilter, $pathMapping);
+                QueryHelper::addFilter($queryBuilder, $combinedFilter, $CACHED_PERSON_ENTITY_ALIAS);
             }
-        }
 
-        $queryBuilder = $this->entityManager->createQueryBuilder();
-        $queryBuilder
-            ->select($CACHED_PERSON_ENTITY_ALIAS)
-            ->from(CachedPerson::class, $CACHED_PERSON_ENTITY_ALIAS);
-
-        if ($combinedFilter !== null) {
-            FilterTools::mapConditionPaths($combinedFilter, $pathMapping);
-            try {
-                QueryHelper::addFilter($queryBuilder, $combinedFilter);
-            } catch (\Exception $exception) {
-                $this->logger->error('failed to apply filter to course query: '.$exception->getMessage(), [$exception]);
-                throw new \RuntimeException('failed to apply filter to course query');
+            if (null !== ($sort = Options::getSort($options))) {
+                SortTools::mapSortPaths($sort, $pathMapping);
+                QueryHelper::addSort($queryBuilder, $sort, $CACHED_PERSON_ENTITY_ALIAS);
             }
-        }
 
-        if ($sort !== null) {
-            foreach ($sort->getSortFields() as $sortField) {
-                if ($column = $pathMapping[Sort::getPath($sortField)] ?? null) {
-                    $queryBuilder->addOrderBy($column, Sort::getDirection($sortField) === Sort::DESCENDING_DIRECTION ? 'DESC' : 'ASC');
-                } else {
-                    throw new \RuntimeException('unable to sort by unknown attribute: '.Sort::getPath($sortField));
-                }
+            $paginator = new Paginator($queryBuilder->getQuery());
+            $paginator->getQuery()
+                ->setFirstResult($firstItemIndex)
+                ->setMaxResults($maxNumItems);
+
+            $personAndExtraDataPage = [];
+            /** @var CachedPerson $cachedPerson */
+            foreach ($paginator as $cachedPerson) {
+                $personAndExtraDataPage[] = self::createPersonAndExtraDataFromCachedPerson($cachedPerson, $options);
             }
-        }
 
-        $paginator = new Paginator($queryBuilder->getQuery());
-        $paginator->getQuery()
-            ->setFirstResult($firstItemIndex)
-            ->setMaxResults($maxNumItems);
-
-        $cachedPersons = [];
-        /** @var CachedPerson $cachedPerson */
-        foreach ($paginator as $cachedPerson) {
-            $cachedPersons[] = $cachedPerson;
-        }
-
-        $this->currentResultPersonUids = [];
-        foreach ($cachedPersons as $cachedPerson) {
-            $this->currentResultPersonUids[] = $cachedPerson->getUid();
-            yield self::createPersonAndExtraDataFromCachedPerson($cachedPerson, $options);
+            return $personAndExtraDataPage;
+        } catch (\Throwable $exception) {
+            $this->logger->error('failed to get persons from cache: '.$exception->getMessage(), [$exception]);
+            throw ApiError::withDetails(Response::HTTP_INTERNAL_SERVER_ERROR, 'failed to get persons');
         }
     }
 
@@ -491,13 +389,12 @@ class PersonProvider extends AbstractAuthorizationService implements PersonProvi
                 // else ignore known CO bug that returns HTTP 500 (NullPointerException) for some records when addresses are requested
                 $resourcePage = $this->getPersonClaimsApi()->getPersonClaimsPageCursorBased(
                     queryParameters: $queryParameters,
-                    claims: self::PERSON_CLAIMS_TO_FETCH, // those are safe to fetch
+                    claims: [Common::ALL_CLAIM], // get everything
                     maxNumItems: self::MAX_NUM_PERSON_UIDS_PER_REQUEST);
             }
 
             /** @var PersonClaimsResource $personClaimsResource */
             foreach ($resourcePage->getResources() as $personClaimsResource) {
-                dump($personClaimsResource);
                 $this->personClaimsRequestCache[$personClaimsResource->getUid()] = $personClaimsResource;
             }
             $currentPersonIndex += self::MAX_NUM_PERSON_UIDS_PER_REQUEST;
@@ -531,10 +428,12 @@ class PersonProvider extends AbstractAuthorizationService implements PersonProvi
         for ($addressIndex = 0; $addressIndex < $personClaims->getNumAddresses(); ++$addressIndex) {
             if ($personClaims->getEmployeeAddressTypeAbbreviation($addressIndex) === $employeeAdressTypeAbbreviation) {
                 $address = [
+                    'addressTypeName' => $personClaims->getEmployeeAddressTypeName($addressIndex),
                     'street' => $personClaims->getAddressStreet($addressIndex),
                     'postalCode' => $personClaims->getAddressPostalCode($addressIndex),
                     'city' => $personClaims->getAddressCity($addressIndex),
                     'country' => $personClaims->getAddressCountry($addressIndex),
+                    'additionalInformation' => $personClaims->getAdditionalAddressInfo($addressIndex),
                 ];
                 break;
             }
@@ -557,13 +456,32 @@ class PersonProvider extends AbstractAuthorizationService implements PersonProvi
                 }
                 // else ignore known CO bug that returns HTTP 500 (NullPointerException) for some records when addresses are requested
                 $personClaimsCached = $this->getPersonClaimsApi()->getPersonClaimsByPersonUid($personIdentifier, [
-                    self::PERSON_CLAIMS_TO_FETCH, // those are safe to fetch
+                    [Common::ALL_CLAIM], // get everything
                 ]);
             }
             $this->personClaimsRequestCache[$personIdentifier] = $personClaimsCached;
         }
 
         return $personClaimsCached;
+    }
+
+    /**
+     * @return Person[]
+     */
+    private function getPersonsInternal(int $currentPageNumber, int $maxNumItemsPerPage, ?Filter $filter, array $options): array
+    {
+        $personAndExtraDataPage = $this->getPersonsFromCache(
+            Pagination::getFirstItemIndex($currentPageNumber, $maxNumItemsPerPage),
+            $maxNumItemsPerPage, $filter, $options);
+
+        $this->currentResultPersonUids = array_map(
+            fn (PersonAndExtraData $personAndExtraData) => $personAndExtraData->getPerson()->getIdentifier(),
+            $personAndExtraDataPage);
+
+        return array_map(
+            fn (PersonAndExtraData $personAndExtraData) => $this->postProcessPerson($personAndExtraData, $options),
+            $personAndExtraDataPage
+        );
     }
 
     private function postProcessPerson(PersonAndExtraData $personAndExtraData, array $options): Person
@@ -679,5 +597,83 @@ class PersonProvider extends AbstractAuthorizationService implements PersonProvi
         }
 
         return new ApiError(Response::HTTP_INTERNAL_SERVER_ERROR, 'failed to get course(s): '.$apiException->getMessage());
+    }
+
+    private function cachePersonsWithAccountOnly(): void
+    {
+        $userApi = new UserApi($this->getConnection());
+        $userApiQueryParameters = [
+            UserApi::ACCOUNT_STATUS_KEY_QUERY_PARAMETER_NAME => self::ACCOUNT_STATUS_KEYS_TO_FETCH,
+            UserApi::ACCOUNT_TYPE_KEY_QUERY_PARAMETER_NAME => self::ACCOUNT_TYPE_KEYS_TO_FETCH,
+        ];
+        $nextUsersCursor = null;
+        do {
+            $userResourcePage = $userApi->getUsersCursorBased(
+                queryParameters: $userApiQueryParameters,
+                cursor: $nextUsersCursor,
+                maxNumItems: 1000);
+
+            $personsToFetch = [];
+            /** @var UserResource $userResource */
+            foreach ($userResourcePage->getResources() as $userResource) {
+                $personGroupKeys = 0;
+                for ($accountIndex = 0; $accountIndex < $userResource->getNumAccounts(); ++$accountIndex) {
+                    if ($userResource->getAccountStatusKey($accountIndex) === AccountsCommon::OK_ACCOUNT_STATUS_KEY) {
+                        $personGroupKeys |= match ($userResource->getAccountTypeKey($accountIndex)) {
+                            'STAFF' => CachedPerson::EMPLOYEE_PERSON_GROUP_MASK,
+                            'STUDENT' => CachedPerson::STUDENT_PERSON_GROUP_MASK,
+                            default => 0,
+                        };
+                    }
+                }
+                if ($personGroupKeys !== 0) {
+                    $personsToFetch[$userResource->getPersonUid()] = $personGroupKeys;
+                }
+            }
+
+            $currentPersonIndex = 0;
+            while ($currentPersonIndex < count($personsToFetch)) {
+                $personClaimsQueryParameters = [
+                    PersonClaimsApi::PERSON_UID_QUERY_PARAMETER_NAME => array_slice(
+                        array_keys($personsToFetch),
+                        $currentPersonIndex,
+                        self::MAX_NUM_PERSON_UIDS_PER_REQUEST),
+                ];
+
+                foreach ($this->getPersonClaimsApi()->getPersonClaimsPageOffsetBased(
+                    queryParameters: $personClaimsQueryParameters,
+                    claims: self::PERSON_CLAIMS_REQUIRED_FOR_CACHE,
+                    maxNumItems: self::MAX_NUM_PERSON_UIDS_PER_REQUEST) as $personClaimsResource) {
+                    $cachedPersonStaging = self::createCachedPersonStagingFromPersonClaimsResource(
+                        $personClaimsResource);
+                    $cachedPersonStaging->setPersonGroups(
+                        $personsToFetch[$personClaimsResource->getUid()]);
+                    $this->entityManager->persist($cachedPersonStaging);
+                }
+                $currentPersonIndex += self::MAX_NUM_PERSON_UIDS_PER_REQUEST;
+            }
+
+            $this->entityManager->flush();
+            $this->entityManager->clear();
+        } while (($nextUsersCursor = $userResourcePage->getNextCursor()) !== null);
+    }
+
+    private function cacheAllPersons(): void
+    {
+        $nextCursor = null;
+        do {
+            $personClaimResourcePage = $this->getPersonClaimsApi()->getPersonClaimsPageCursorBased(
+                claims: self::PERSON_CLAIMS_REQUIRED_FOR_CACHE,
+                cursor: $nextCursor,
+                maxNumItems: 1000);
+
+            foreach ($personClaimResourcePage->getResources() as $personClaimsResource) {
+                $cachedPersonStaging = self::createCachedPersonStagingFromPersonClaimsResource(
+                    $personClaimsResource);
+                $this->entityManager->persist($cachedPersonStaging);
+            }
+            $this->entityManager->flush();
+            $this->entityManager->clear();
+        } while (($nextCursor = $personClaimResourcePage->getNextCursor()) !== null);
     }
 }

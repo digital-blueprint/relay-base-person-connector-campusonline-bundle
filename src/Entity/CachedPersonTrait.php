@@ -44,7 +44,7 @@ trait CachedPersonTrait
     private ?string $givenName = null;
     #[ORM\Column(name: self::SURNAME_COLUMN_NAME, type: 'string', length: 128, nullable: true)]
     private ?string $surname = null;
-    #[ORM\Column(name: self::DATE_OF_BIRTH_COLUMN_NAME, type: 'datetime', nullable: true)]
+    #[ORM\Column(name: self::DATE_OF_BIRTH_COLUMN_NAME, type: 'date', nullable: true)]
     private ?\DateTime $dateOfBirth = null;
     #[ORM\Column(name: self::EMAIL_COLUMN_NAME, type: 'string', length: 128, nullable: true)]
     private ?string $email = null;

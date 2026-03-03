@@ -21,16 +21,6 @@ class PersonEventSubscriber extends AbstractLocalDataEventSubscriber
     public const INTERNAL_PHONE_NUMBERS_EMPLOYEE_SOURCE_ATTRIBUTE = 'internalPhoneNumbersEmployee';
     public const WWW_HOMEPAGE_EMPLOYEE_SOURCE_ATTRIBUTE = 'wwwHomepageEmployee';
 
-    public const LOCAL_DATA_SOURCE_ATTRIBUTES = [
-        self::EMPLOYEE_POSTAL_ADDRESS_SOURCE_ATTRIBUTE,
-        self::EMPLOYEE_WORK_ADDRESS_SOURCE_ATTRIBUTE,
-        self::BUSINESS_CARD_URL_EMPLOYEE_SOURCE_ATTRIBUTE,
-        self::MOBILE_PHONE_NUMBER_EMPLOYEE_SOURCE_ATTRIBUTE,
-        self::EXTERNAL_PHONE_NUMBER_EMPLOYEE_SOURCE_ATTRIBUTE,
-        self::INTERNAL_PHONE_NUMBERS_EMPLOYEE_SOURCE_ATTRIBUTE,
-        self::WWW_HOMEPAGE_EMPLOYEE_SOURCE_ATTRIBUTE,
-    ];
-
     protected static function getSubscribedEventNames(): array
     {
         return [
