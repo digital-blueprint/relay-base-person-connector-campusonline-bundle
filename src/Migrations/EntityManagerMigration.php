@@ -39,7 +39,7 @@ abstract class EntityManagerMigration extends AbstractEntityManagerMigration
                    $uidColumn VARCHAR(32) NOT NULL,
                    $givenNameColumn VARCHAR(128) NULL,
                    $surnameColumn VARCHAR(128) NULL,
-                   $dateOfBirthColumn DATE NULL,
+                   $dateOfBirthColumn VARCHAR(10) NULL,
                    $emailColumn VARCHAR(128) NULL,
                    $matriculationNumberColumn VARCHAR(16) NULL,
                    $titlePrefixColumn VARCHAR(128) NULL,

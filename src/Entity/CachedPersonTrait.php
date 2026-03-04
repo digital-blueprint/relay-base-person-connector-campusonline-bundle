@@ -44,8 +44,8 @@ trait CachedPersonTrait
     private ?string $givenName = null;
     #[ORM\Column(name: self::SURNAME_COLUMN_NAME, type: 'string', length: 128, nullable: true)]
     private ?string $surname = null;
-    #[ORM\Column(name: self::DATE_OF_BIRTH_COLUMN_NAME, type: 'date', nullable: true)]
-    private ?\DateTime $dateOfBirth = null;
+    #[ORM\Column(name: self::DATE_OF_BIRTH_COLUMN_NAME, type: 'string', length: 10, nullable: true)]
+    private ?string $dateOfBirth = null;
     #[ORM\Column(name: self::EMAIL_COLUMN_NAME, type: 'string', length: 128, nullable: true)]
     private ?string $email = null;
     #[ORM\Column(name: self::MATRICULATION_NUMBER_COLUMN_NAME, type: 'string', length: 16, nullable: true)]
@@ -87,12 +87,12 @@ trait CachedPersonTrait
         $this->surname = $surname;
     }
 
-    public function getDateOfBirth(): ?\DateTime
+    public function getDateOfBirth(): ?string
     {
         return $this->dateOfBirth;
     }
 
-    public function setDateOfBirth(?\DateTime $dateOfBirth): void
+    public function setDateOfBirth(?string $dateOfBirth): void
     {
         $this->dateOfBirth = $dateOfBirth;
     }

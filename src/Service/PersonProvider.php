@@ -541,11 +541,7 @@ class PersonProvider extends AbstractAuthorizationService implements PersonProvi
         $cachedPerson->setUid($personClaimsResource->getUid());
         $cachedPerson->setGivenName($personClaimsResource->getGivenName());
         $cachedPerson->setSurname($personClaimsResource->getSurname());
-        try {
-            $cachedPerson->setDateOfBirth(($dateOfBirth = $personClaimsResource->getDateOfBirth()) ?
-                new \DateTime($dateOfBirth) : null);
-        } catch (\Exception) {
-        }
+        $cachedPerson->setDateOfBirth($personClaimsResource->getDateOfBirth());
         $cachedPerson->setEmail(self::getMainEmail($personClaimsResource));
         $cachedPerson->setMatriculationNumber($personClaimsResource->getMatriculationNumber());
         $cachedPerson->setGenderKey($personClaimsResource->getGenderKey());
