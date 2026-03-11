@@ -543,17 +543,6 @@ class PersonProvider extends AbstractAuthorizationService implements PersonProvi
         return $this->currentPersonIdentifier;
     }
 
-    private static function createPersonAndExtraDataFromPersonClaimsResource(
-        PersonClaimsResource $personClaimsResource, array $options): PersonAndExtraData
-    {
-        $person = new Person();
-        $person->setIdentifier($personClaimsResource->getUid());
-        $person->setGivenName($personClaimsResource->getGivenName());
-        $person->setFamilyName($personClaimsResource->getSurname());
-
-        return new PersonAndExtraData($person, $personClaimsResource->getResourceData());
-    }
-
     private static function createPersonAndExtraDataFromCachedPerson(
         CachedPerson $cachedPerson, array $options): PersonAndExtraData
     {
