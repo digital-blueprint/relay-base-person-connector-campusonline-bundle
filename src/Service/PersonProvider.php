@@ -74,7 +74,6 @@ class PersonProvider extends AbstractAuthorizationService implements PersonProvi
     private LocalDataEventDispatcher $eventDispatcher;
     private ?string $currentPersonIdentifier = null;
     private bool $wasCurrentPersonIdentifierRetrieved = false;
-    private ?Person $currentPerson = null;
 
     /**
      * @var array<string, mixed>
@@ -230,11 +229,7 @@ class PersonProvider extends AbstractAuthorizationService implements PersonProvi
         $this->eventDispatcher->onNewOperation($options);
 
         $currentPerson = null;
-        if (null !== $this->currentPerson
-            && $this->eventDispatcher->checkRequestedAttributesIdentical($this->currentPerson) // TODO core bundle: provide a static method to check
-            || null === Options::getFilter($options)) {
-            $currentPerson = $this->currentPerson;
-        } elseif (null !== ($currentPersonIdentifier = $this->getCurrentPersonIdentifierInternal())) {
+        if (null !== ($currentPersonIdentifier = $this->getCurrentPersonIdentifierInternal())) {
             $currentPerson = $this->getPerson($currentPersonIdentifier, $options);
         }
 
