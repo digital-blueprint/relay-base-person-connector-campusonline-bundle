@@ -6,3 +6,5 @@
 - Cache person data in the database
 - Add local data support
 - Add filter support
+- Add health checks for the CO apis
+- Add a RecreatePersonCachePostEvent which allows subscribers to add persons to the staging table on cache recreation

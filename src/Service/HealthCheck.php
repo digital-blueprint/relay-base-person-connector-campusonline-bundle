@@ -21,15 +21,26 @@ readonly class HealthCheck implements CheckInterface
 
     public function check(CheckOptions $options): array
     {
-        $result = new CheckResult('Check if the CO REST person-claims API works');
+        $results = [];
 
+        $result = new CheckResult('Check if the CO REST person-claims API works');
         $result->set(CheckResult::STATUS_SUCCESS);
         try {
-            $this->personProvider->checkConnection();
+            $this->personProvider->checkPersonClaimsApi();
         } catch (\Throwable $e) {
             $result->set(CheckResult::STATUS_FAILURE, $e->getMessage(), ['exception' => $e]);
         }
+        $results[] = $result;
 
-        return [$result];
+        $result = new CheckResult('Check if the CO REST users API works');
+        $result->set(CheckResult::STATUS_SUCCESS);
+        try {
+            $this->personProvider->checkUsersApi();
+        } catch (\Throwable $e) {
+            $result->set(CheckResult::STATUS_FAILURE, $e->getMessage(), ['exception' => $e]);
+        }
+        $results[] = $result;
+
+        return $results;
     }
 }

@@ -9,8 +9,6 @@ use Dbp\CampusonlineApi\PublicRestApi\Accounts\Common as AccountsCommon;
 use Dbp\CampusonlineApi\PublicRestApi\Accounts\UserApi;
 use Dbp\CampusonlineApi\PublicRestApi\Accounts\UserResource;
 use Dbp\CampusonlineApi\PublicRestApi\Connection;
-use Dbp\CampusonlineApi\PublicRestApi\Organizations\PersonOrganisationApi;
-use Dbp\CampusonlineApi\PublicRestApi\Organizations\PersonOrganisationResource;
 use Dbp\CampusonlineApi\PublicRestApi\Persons\Common;
 use Dbp\CampusonlineApi\PublicRestApi\Persons\PersonClaimsApi;
 use Dbp\CampusonlineApi\PublicRestApi\Persons\PersonClaimsResource;
@@ -21,6 +19,7 @@ use Dbp\Relay\BasePersonConnectorCampusonlineBundle\Entity\CachedPerson;
 use Dbp\Relay\BasePersonConnectorCampusonlineBundle\Entity\CachedPersonStaging;
 use Dbp\Relay\BasePersonConnectorCampusonlineBundle\Event\PersonPostEvent;
 use Dbp\Relay\BasePersonConnectorCampusonlineBundle\Event\PersonPreEvent;
+use Dbp\Relay\BasePersonConnectorCampusonlineBundle\Event\RecreatePersonCachePostEvent;
 use Dbp\Relay\CoreBundle\Authorization\AbstractAuthorizationService;
 use Dbp\Relay\CoreBundle\Doctrine\QueryHelper;
 use Dbp\Relay\CoreBundle\Exception\ApiError;
@@ -47,9 +46,6 @@ class PersonProvider extends AbstractAuthorizationService implements PersonProvi
 
     private const ACCOUNT_STATUS_KEYS_TO_FETCH = [
         AccountsCommon::OK_ACCOUNT_STATUS_KEY,
-        'GESPERRT',
-        'BEENDET',
-        'INAKTIV',
     ];
 
     // TODO: make non-const account type keys configurable via config instead of hardcoding them
@@ -72,7 +68,9 @@ class PersonProvider extends AbstractAuthorizationService implements PersonProvi
     ];
     private const MAX_NUM_PERSON_UIDS_PER_REQUEST = 50;
 
+    private ?Connection $connection = null;
     private ?PersonClaimsApi $personClaimsApi = null;
+    private ?UserApi $userApi = null;
     private LocalDataEventDispatcher $eventDispatcher;
     private ?string $currentPersonIdentifier = null;
     private bool $wasCurrentPersonIdentifierRetrieved = false;
@@ -111,9 +109,21 @@ class PersonProvider extends AbstractAuthorizationService implements PersonProvi
         $this->setUpAccessControlPolicies(attributes: $attributes);
     }
 
-    public function checkConnection(): void
+    public function checkPersonClaimsApi(): void
     {
-        $this->getPersonClaimsApi()->getPersonClaimsPageOffsetBased();
+        $this->getPersonClaimsApi()->getPersonClaimsPageCursorBased(
+            claims: [Common::ALL_CLAIM],
+            maxNumItems: 1);
+    }
+
+    public function checkUsersApi(): void
+    {
+        $this->getUserApi()->getUsersCursorBased(
+            queryParameters: [
+                UserApi::ACCOUNT_STATUS_KEY_QUERY_PARAMETER_NAME => self::ACCOUNT_STATUS_KEYS_TO_FETCH,
+                UserApi::ACCOUNT_TYPE_KEY_QUERY_PARAMETER_NAME => self::ACCOUNT_TYPE_KEYS_TO_FETCH,
+            ],
+            maxNumItems: 1);
     }
 
     /**
@@ -124,6 +134,8 @@ class PersonProvider extends AbstractAuthorizationService implements PersonProvi
         $connection = $this->entityManager->getConnection();
         try {
             $this->cachePersonsWithAccountOnly();
+
+            $this->eventDispatcher->dispatch(new RecreatePersonCachePostEvent($this->entityManager));
 
             $personsStagingTableName = CachedPersonStaging::TABLE_NAME;
             $personsLiveTableName = CachedPerson::TABLE_NAME;
@@ -229,84 +241,95 @@ class PersonProvider extends AbstractAuthorizationService implements PersonProvi
         return $currentPerson;
     }
 
-    /**
-     * This can't be used to determine employment relationships, since we get
-     * - inactive organizations
-     * - organizations where persons have other functions than employee.
-     *
-     * @return string[]
-     */
-    public function getPersonIdentifiersByOrganization(string $organizationIdentifier): array
-    {
-        // NOTE: the CO person-organisations operation needs deduplication.
-        $personFunctionsApi = new PersonOrganisationApi($this->getConnection());
-        $nextCursor = null;
-        $personIdentifiers = [];
-        do {
-            $resourcePage = $personFunctionsApi->getPersonOrganisationsCursorBased(
-                queryParameters: [
-                    PersonOrganisationApi::ORGANISATION_UID_QUERY_PARAMETER_NAME => $organizationIdentifier,
-                ],
-                cursor: $nextCursor,
-                maxNumItems: 1000);
+    //    /**
+    //     * This can't be used to determine employment relationships, since we get
+    //     * - inactive organizations
+    //     * - organizations where persons have other functions than employee.
+    //     *
+    //     * @return string[]
+    //     */
+    //    public function getPersonIdentifiersByOrganization(string $organizationIdentifier): array
+    //    {
+    //        // NOTE: the CO person-organisations operation needs deduplication.
+    //        $personFunctionsApi = new PersonOrganisationApi($this->getConnection());
+    //        $nextCursor = null;
+    //        $personIdentifiers = [];
+    //        do {
+    //            $resourcePage = $personFunctionsApi->getPersonOrganisationsCursorBased(
+    //                queryParameters: [
+    //                    PersonOrganisationApi::ORGANISATION_UID_QUERY_PARAMETER_NAME => $organizationIdentifier,
+    //                ],
+    //                cursor: $nextCursor,
+    //                maxNumItems: 1000);
+    //
+    //            /** @var PersonOrganisationResource $personOrganisationResource */
+    //            foreach ($resourcePage->getResources() as $personOrganisationResource) {
+    //                $personIdentifiers[$personOrganisationResource->getPersonUid()] = null; // deduplicate via array keys
+    //            }
+    //        } while (($nextCursor = $resourcePage->getNextCursor()) !== null);
+    //
+    //        return array_keys($personIdentifiers);
+    //    }
 
-            /** @var PersonOrganisationResource $personOrganisationResource */
-            foreach ($resourcePage->getResources() as $personOrganisationResource) {
-                $personIdentifiers[$personOrganisationResource->getPersonUid()] = null; // deduplicate via array keys
-            }
-        } while (($nextCursor = $resourcePage->getNextCursor()) !== null);
-
-        return array_keys($personIdentifiers);
-    }
-
-    /**
-     * This can't be used to determine employment relationships, since we get
-     * - inactive organizations
-     * - organizations where persons have other functions than employee.
-     *
-     * @return string[]
-     */
-    public function getOrganizationIdentifiersByPerson(?string $personIdentifier): array
-    {
-        // NOTE: the CO person-organisations operation needs deduplication.
-        $personFunctionsApi = new PersonOrganisationApi($this->getConnection());
-        $nextCursor = null;
-        $organizationIdentifiers = [];
-        do {
-            $resourcePage = $personFunctionsApi->getPersonOrganisationsCursorBased(
-                queryParameters: [
-                    PersonOrganisationApi::PERSON_UID_QUERY_PARAMETER_NAME => $personIdentifier,
-                ],
-                cursor: $nextCursor,
-                maxNumItems: 1000);
-
-            /** @var PersonOrganisationResource $personOrganisationResource */
-            foreach ($resourcePage->getResources() as $personOrganisationResource) {
-                $organizationIdentifiers[$personOrganisationResource->getOrganisationUid()] = null; // deduplicate via array keys
-            }
-        } while (($nextCursor = $resourcePage->getNextCursor()) !== null);
-
-        return array_keys($organizationIdentifiers);
-    }
+    //    /**
+    //     * This can't be used to determine employment relationships, since we get
+    //     * - inactive organizations
+    //     * - organizations where persons have other functions than employee.
+    //     *
+    //     * @return string[]
+    //     */
+    //    public function getOrganizationIdentifiersByPerson(?string $personIdentifier): array
+    //    {
+    //        // NOTE: the CO person-organisations operation needs deduplication.
+    //        $personFunctionsApi = new PersonOrganisationApi($this->getConnection());
+    //        $nextCursor = null;
+    //        $organizationIdentifiers = [];
+    //        do {
+    //            $resourcePage = $personFunctionsApi->getPersonOrganisationsCursorBased(
+    //                queryParameters: [
+    //                    PersonOrganisationApi::PERSON_UID_QUERY_PARAMETER_NAME => $personIdentifier,
+    //                ],
+    //                cursor: $nextCursor,
+    //                maxNumItems: 1000);
+    //
+    //            /** @var PersonOrganisationResource $personOrganisationResource */
+    //            foreach ($resourcePage->getResources() as $personOrganisationResource) {
+    //                $organizationIdentifiers[$personOrganisationResource->getOrganisationUid()] = null; // deduplicate via array keys
+    //            }
+    //        } while (($nextCursor = $resourcePage->getNextCursor()) !== null);
+    //
+    //        return array_keys($organizationIdentifiers);
+    //    }
 
     private function getPersonClaimsApi(): PersonClaimsApi
     {
         if ($this->personClaimsApi === null) {
-            $this->personClaimsApi = new PersonClaimsApi(
-                new Connection(
-                    $this->config['base_url'],
-                    $this->config['client_id'],
-                    $this->config['client_secret']
-                )
-            );
+            $this->personClaimsApi = new PersonClaimsApi($this->getConnection());
         }
 
         return $this->personClaimsApi;
     }
 
+    private function getUserApi(): UserApi
+    {
+        if ($this->userApi === null) {
+            $this->userApi = new UserApi($this->getConnection());
+        }
+
+        return $this->userApi;
+    }
+
     private function getConnection(): Connection
     {
-        return $this->getPersonClaimsApi()->getConnection();
+        if ($this->connection === null) {
+            $this->connection = new Connection(
+                $this->config['base_url'],
+                $this->config['client_id'],
+                $this->config['client_secret']
+            );
+        }
+
+        return $this->connection;
     }
 
     /**
@@ -359,6 +382,14 @@ class PersonProvider extends AbstractAuthorizationService implements PersonProvi
             $this->logger->error('failed to get persons from cache: '.$exception->getMessage(), [$exception]);
             throw ApiError::withDetails(Response::HTTP_INTERNAL_SERVER_ERROR, 'failed to get persons');
         }
+    }
+
+    /**
+     * @return string[]
+     */
+    public function getCurrentResultPersonIdentifiers(): array
+    {
+        return $this->currentResultPersonUids;
     }
 
     /**
@@ -597,14 +628,13 @@ class PersonProvider extends AbstractAuthorizationService implements PersonProvi
 
     private function cachePersonsWithAccountOnly(): void
     {
-        $userApi = new UserApi($this->getConnection());
         $userApiQueryParameters = [
             UserApi::ACCOUNT_STATUS_KEY_QUERY_PARAMETER_NAME => self::ACCOUNT_STATUS_KEYS_TO_FETCH,
             UserApi::ACCOUNT_TYPE_KEY_QUERY_PARAMETER_NAME => self::ACCOUNT_TYPE_KEYS_TO_FETCH,
         ];
         $nextUsersCursor = null;
         do {
-            $userResourcePage = $userApi->getUsersCursorBased(
+            $userResourcePage = $this->getUserApi()->getUsersCursorBased(
                 queryParameters: $userApiQueryParameters,
                 cursor: $nextUsersCursor,
                 maxNumItems: 1000);
@@ -654,22 +684,22 @@ class PersonProvider extends AbstractAuthorizationService implements PersonProvi
         } while (($nextUsersCursor = $userResourcePage->getNextCursor()) !== null);
     }
 
-    private function cacheAllPersons(): void
-    {
-        $nextCursor = null;
-        do {
-            $personClaimResourcePage = $this->getPersonClaimsApi()->getPersonClaimsPageCursorBased(
-                claims: self::PERSON_CLAIMS_REQUIRED_FOR_CACHE,
-                cursor: $nextCursor,
-                maxNumItems: 1000);
-
-            foreach ($personClaimResourcePage->getResources() as $personClaimsResource) {
-                $cachedPersonStaging = self::createCachedPersonStagingFromPersonClaimsResource(
-                    $personClaimsResource);
-                $this->entityManager->persist($cachedPersonStaging);
-            }
-            $this->entityManager->flush();
-            $this->entityManager->clear();
-        } while (($nextCursor = $personClaimResourcePage->getNextCursor()) !== null);
-    }
+    //    private function cacheAllPersons(): void
+    //    {
+    //        $nextCursor = null;
+    //        do {
+    //            $personClaimResourcePage = $this->getPersonClaimsApi()->getPersonClaimsPageCursorBased(
+    //                claims: self::PERSON_CLAIMS_REQUIRED_FOR_CACHE,
+    //                cursor: $nextCursor,
+    //                maxNumItems: 1000);
+    //
+    //            foreach ($personClaimResourcePage->getResources() as $personClaimsResource) {
+    //                $cachedPersonStaging = self::createCachedPersonStagingFromPersonClaimsResource(
+    //                    $personClaimsResource);
+    //                $this->entityManager->persist($cachedPersonStaging);
+    //            }
+    //            $this->entityManager->flush();
+    //            $this->entityManager->clear();
+    //        } while (($nextCursor = $personClaimResourcePage->getNextCursor()) !== null);
+    //    }
 }
