@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## v0.1.1
+
+- Fix fetching the currently logged in person
+
 ## v0.1.0
 
 - Implement the PersonProviderInterface from the person bundle
