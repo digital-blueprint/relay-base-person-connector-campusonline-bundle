@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v0.1.2
+
 - Cache current person
 - Add unit tests
 
