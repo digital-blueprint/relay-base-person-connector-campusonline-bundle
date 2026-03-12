@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## v0.1.3
+
+- fix titleSuffix not written to cache table
+
 ## v0.1.2
 
 - Cache current person
