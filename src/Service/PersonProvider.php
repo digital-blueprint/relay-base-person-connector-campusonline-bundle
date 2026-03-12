@@ -582,6 +582,7 @@ class PersonProvider extends AbstractAuthorizationService implements PersonProvi
         $cachedPerson->setMatriculationNumber($personClaimsResource->getMatriculationNumber());
         $cachedPerson->setGenderKey($personClaimsResource->getGenderKey());
         $cachedPerson->setTitlePrefix($personClaimsResource->getTitlePrefix());
+        $cachedPerson->setTitleSuffix($personClaimsResource->getTitleSuffix());
         // NOTE: person groups are set depending on user account info
 
         return $cachedPerson;
