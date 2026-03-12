@@ -15,6 +15,7 @@ trait CachedPersonTrait
     public const EMAIL_COLUMN_NAME = 'email';
     public const MATRICULATION_NUMBER_COLUMN_NAME = 'matriculationNumber';
     public const TITLE_PREFIX_COLUMN_NAME = 'titlePrefix';
+    public const TITLE_SUFFIX_COLUMN_NAME = 'titleSuffix';
     public const GENDER_KEY_COLUMN_NAME = 'genderKey';
     public const PERSON_GROUPS_COLUMN_NAME = 'personGroups';
 
@@ -29,6 +30,7 @@ trait CachedPersonTrait
         self::EMAIL_COLUMN_NAME => 'getEmail',
         self::MATRICULATION_NUMBER_COLUMN_NAME => 'getMatriculationNumber',
         self::TITLE_PREFIX_COLUMN_NAME => 'getTitlePrefix',
+        self::TITLE_SUFFIX_COLUMN_NAME => 'getTitleSuffix',
         self::GENDER_KEY_COLUMN_NAME => 'getGenderKey',
         self::PERSON_GROUPS_COLUMN_NAME => 'getPersonGroups',
     ];
@@ -52,6 +54,8 @@ trait CachedPersonTrait
     private ?string $matriculationNumber = null;
     #[ORM\Column(name: self::TITLE_PREFIX_COLUMN_NAME, type: 'string', length: 128, nullable: true)]
     private ?string $titlePrefix = null;
+    #[ORM\Column(name: self::TITLE_SUFFIX_COLUMN_NAME, type: 'string', length: 128, nullable: true)]
+    private ?string $titleSuffix = null;
     #[ORM\Column(name: self::GENDER_KEY_COLUMN_NAME, type: 'string', length: 4, nullable: true)]
     private ?string $genderKey = null;
     #[ORM\Column(name: self::PERSON_GROUPS_COLUMN_NAME, type: 'integer', nullable: true)]
@@ -125,6 +129,16 @@ trait CachedPersonTrait
     public function setTitlePrefix(?string $titlePrefix): void
     {
         $this->titlePrefix = $titlePrefix;
+    }
+
+    public function getTitleSuffix(): ?string
+    {
+        return $this->titleSuffix;
+    }
+
+    public function setTitleSuffix(?string $titleSuffix): void
+    {
+        $this->titleSuffix = $titleSuffix;
     }
 
     public function getGenderKey(): ?string

@@ -31,6 +31,7 @@ abstract class EntityManagerMigration extends AbstractEntityManagerMigration
         $emailColumn = CachedPerson::EMAIL_COLUMN_NAME;
         $matriculationNumberColumn = CachedPerson::MATRICULATION_NUMBER_COLUMN_NAME;
         $titlePrefixColumn = CachedPerson::TITLE_PREFIX_COLUMN_NAME;
+        $titleSuffixColumn = CachedPerson::TITLE_SUFFIX_COLUMN_NAME;
         $genderKeyColumn = CachedPerson::GENDER_KEY_COLUMN_NAME;
         $personGroupsColumn = CachedPerson::PERSON_GROUPS_COLUMN_NAME;
 
@@ -43,6 +44,7 @@ abstract class EntityManagerMigration extends AbstractEntityManagerMigration
                    $emailColumn VARCHAR(128) NULL,
                    $matriculationNumberColumn VARCHAR(16) NULL,
                    $titlePrefixColumn VARCHAR(128) NULL,
+                   $titleSuffixColumn VARCHAR(128) NULL,
                    $genderKeyColumn VARCHAR(4) NULL,
                    $personGroupsColumn INT NULL,
                    PRIMARY KEY($uidColumn)

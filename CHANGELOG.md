@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Cache current person
+- Add unit tests
+
 ## v0.1.1
 
 - Fix fetching the currently logged in person

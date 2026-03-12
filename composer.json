@@ -8,7 +8,7 @@
         "ext-json": "*",
         "api-platform/metadata": "^4.1",
         "api-platform/openapi": "^4.1",
-        "dbp/campusonline-api": "^0.3.33",
+        "dbp/campusonline-api": "^0.3.34",
         "dbp/relay-base-person-bundle": "^0.2.44",
         "dbp/relay-core-bundle": "^0.1.231",
         "doctrine/dbal": "^4.4",

@@ -1,0 +1,19 @@
+{
+  "items": [
+    {
+      "accounts": [
+        {
+          "accountStatusKey": "OK",
+          "accountTypeKey": "STAFF",
+          "accountUid": "account-123",
+          "email": "max.mustermann@someuni.at",
+          "externalIdentityId": "external-identity-123",
+          "personUid": "019ce14a-607b-7220-8a50-21a4dc9fdaf8",
+          "username": "maxm"
+        }
+      ],
+      "personUid": "019ce14a-607b-7220-8a50-21a4dc9fdaf8"
+    }
+  ],
+  "limit": 1000
+}

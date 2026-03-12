@@ -73,6 +73,7 @@ class PersonProvider extends AbstractAuthorizationService implements PersonProvi
     private ?UserApi $userApi = null;
     private LocalDataEventDispatcher $eventDispatcher;
     private ?string $currentPersonIdentifier = null;
+    private ?Person $currentPerson = null;
     private bool $wasCurrentPersonIdentifierRetrieved = false;
 
     /**
@@ -108,6 +109,11 @@ class PersonProvider extends AbstractAuthorizationService implements PersonProvi
         $this->setUpAccessControlPolicies(attributes: $attributes);
     }
 
+    public function setClientHandler(object $stack): void
+    {
+        $this->getConnection()->setClientHandler($stack);
+    }
+
     public function checkPersonClaimsApi(): void
     {
         $this->getPersonClaimsApi()->getPersonClaimsPageCursorBased(
@@ -123,6 +129,19 @@ class PersonProvider extends AbstractAuthorizationService implements PersonProvi
                 UserApi::ACCOUNT_TYPE_KEY_QUERY_PARAMETER_NAME => self::ACCOUNT_TYPE_KEYS_TO_FETCH,
             ],
             maxNumItems: 1);
+    }
+
+    public function reset(): void
+    {
+        parent::reset();
+
+        $this->currentPerson = null;
+        $this->currentPersonIdentifier = null;
+        $this->connection = null;
+        $this->personClaimsApi = null;
+        $this->userApi = null;
+        $this->currentResultPersonUids = [];
+        $this->personClaimsRequestCache = [];
     }
 
     /**
@@ -165,7 +184,6 @@ class PersonProvider extends AbstractAuthorizationService implements PersonProvi
         $identifier = $preEvent->getIdentifier();
         $options = $preEvent->getOptions();
 
-        $filter = null;
         try {
             $filter = FilterTreeBuilder::create()
                 ->equals('identifier', $identifier)
@@ -219,21 +237,24 @@ class PersonProvider extends AbstractAuthorizationService implements PersonProvi
         return $this->getPersonsInternal($currentPageNumber, $maxNumItemsPerPage, $filter, $options);
     }
 
-    public function getCurrentPersonIdentifier(): ?string
-    {
-        return $this->getCurrentPersonIdentifierInternal();
-    }
-
     public function getCurrentPerson(array $options = []): ?Person
     {
         $this->eventDispatcher->onNewOperation($options);
 
-        $currentPerson = null;
-        if (null !== ($currentPersonIdentifier = $this->getCurrentPersonIdentifierInternal())) {
-            $currentPerson = $this->getPerson($currentPersonIdentifier, $options);
+        if ((
+            $this->currentPerson === null
+            || false === $this->eventDispatcher->checkRequestedAttributesIdentical($this->currentPerson)
+        )
+        && null !== ($currentPersonIdentifier = $this->getCurrentPersonIdentifierInternal())) {
+            $this->currentPerson = $this->getPerson($currentPersonIdentifier, $options);
         }
 
-        return $currentPerson;
+        return $this->currentPerson;
+    }
+
+    public function getCurrentPersonIdentifier(): ?string
+    {
+        return $this->getCurrentPersonIdentifierInternal();
     }
 
     //    /**
@@ -454,7 +475,7 @@ class PersonProvider extends AbstractAuthorizationService implements PersonProvi
         for ($addressIndex = 0; $addressIndex < $personClaims->getNumAddresses(); ++$addressIndex) {
             if ($personClaims->getEmployeeAddressTypeAbbreviation($addressIndex) === $employeeAdressTypeAbbreviation) {
                 $address = [
-                    'addressTypeName' => $personClaims->getEmployeeAddressTypeName($addressIndex),
+                    'addressTypeKey' => $personClaims->getEmployeeAddressTypeAbbreviation($addressIndex),
                     'street' => $personClaims->getAddressStreet($addressIndex),
                     'postalCode' => $personClaims->getAddressPostalCode($addressIndex),
                     'city' => $personClaims->getAddressCity($addressIndex),
@@ -607,7 +628,7 @@ class PersonProvider extends AbstractAuthorizationService implements PersonProvi
             }
         }
 
-        return new ApiError(Response::HTTP_INTERNAL_SERVER_ERROR, 'failed to get course(s): '.$apiException->getMessage());
+        return new ApiError(Response::HTTP_INTERNAL_SERVER_ERROR, 'failed to get person(s): '.$apiException->getMessage());
     }
 
     private function cachePersonsWithAccountOnly(): void

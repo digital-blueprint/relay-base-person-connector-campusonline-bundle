@@ -1,0 +1,43 @@
+{
+  "items": [
+    {
+      "givenName": "Max",
+      "surname": "Mustermann",
+      "titlePrefix": "Mat. Doctor rer.nat.",
+      "titleSuffix": "mag. ing. arch.",
+      "uid": "019ce14a-607b-7220-8a50-21a4dc9fdaf8",
+      "addresses": [
+        {
+          "city": "Graz",
+          "country": "AT",
+          "employeeAddressTypeAbbreviation": "PA",
+          "employeeAddressTypeName": {
+            "value": {
+              "de": "Wohnsitz",
+              "en": "Residence",
+              "it": null,
+              "fr": null
+            }
+          },
+          "postalCode": "8010",
+          "street": "Street 123"
+        }
+      ],
+      "businessCardUrlEmployee": "https://co.someuni.at/visitenkarte.show_vcard?pPersonenGruppe=3&pPersonenId=019ce14a-607b-7220-8a50-21a4dc9fdaf8",
+      "dateOfBirth": "1970-01-01",
+      "email": "max.mustermann@someuni.at",
+      "emailEmployee": "max.mustermann@someuni.at",
+      "employeeInternalId": 67,
+      "extpersInternalId": 123,
+      "genderKey": "M",
+      "internalPhoneNumbersEmployee": [],
+      "personGroups": [
+        "EMPLOYEE",
+        "EXTPERS"
+      ],
+      "personInternalId": 321,
+      "personTypeKey": "R"
+    }
+  ],
+  "limit": 1000
+}

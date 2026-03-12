@@ -21,7 +21,7 @@ class Configuration implements ConfigurationInterface
 
     public const CURRENT_PERSON_IDENTIFIER_EXPRESSION_ATTRIBUTE = 'current_person_identifier_expression';
 
-    private const CURRENT_PERSON_IDENTIFIER_EXPRESSION_ATTRIBUTE_DEFAULT = 'user.getIdentifier()';
+    public const CURRENT_PERSON_IDENTIFIER_EXPRESSION_ATTRIBUTE_DEFAULT = 'user.getIdentifier()';
 
     private const DATABASE_URL_DEFAULT = 'sqlite:///%kernel.project_dir%/var/persons_cache.db';
 
@@ -30,23 +30,23 @@ class Configuration implements ConfigurationInterface
         $treeBuilder = new TreeBuilder(self::ROOT_NODE);
         $treeBuilder->getRootNode()
             ->children()
-            ->scalarNode(self::DATABASE_URL)
-            ->defaultValue(self::DATABASE_URL_DEFAULT)
-            ->end()
-            ->scalarNode(self::CURRENT_PERSON_IDENTIFIER_EXPRESSION_ATTRIBUTE)
-            ->defaultValue(self::CURRENT_PERSON_IDENTIFIER_EXPRESSION_ATTRIBUTE_DEFAULT)
-            ->end()
-            ->arrayNode(self::CAMPUS_ONLINE_NODE)
-            ->children()
-            ->scalarNode(self::BASE_URL_NODE)->end()
-            ->scalarNode(self::CLIENT_ID_NODE)->end()
-            ->scalarNode(self::CLIENT_SECRET_NODE)->end()
-            ->end()
-            ->end()
-            ->scalarNode(self::CACHE_REFRESH_INTERVAL_NODE)
-            ->defaultValue(CacheRefreshCronJob::DEFAULT_INTERVAL)
-            ->end()
-            ->append(PersonEventSubscriber::getLocalDataMappingConfigNodeDefinition())
+                ->scalarNode(self::DATABASE_URL)
+                ->defaultValue(self::DATABASE_URL_DEFAULT)
+                ->end()
+                ->scalarNode(self::CURRENT_PERSON_IDENTIFIER_EXPRESSION_ATTRIBUTE)
+                ->defaultValue(self::CURRENT_PERSON_IDENTIFIER_EXPRESSION_ATTRIBUTE_DEFAULT)
+                ->end()
+                ->arrayNode(self::CAMPUS_ONLINE_NODE)
+                ->children()
+                ->scalarNode(self::BASE_URL_NODE)->end()
+                ->scalarNode(self::CLIENT_ID_NODE)->end()
+                ->scalarNode(self::CLIENT_SECRET_NODE)->end()
+                ->end()
+                ->end()
+                ->scalarNode(self::CACHE_REFRESH_INTERVAL_NODE)
+                ->defaultValue(CacheRefreshCronJob::DEFAULT_INTERVAL)
+                ->end()
+                ->append(PersonEventSubscriber::getLocalDataMappingConfigNodeDefinition())
             ->end();
 
         return $treeBuilder;
