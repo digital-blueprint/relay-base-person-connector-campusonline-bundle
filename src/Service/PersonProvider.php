@@ -468,20 +468,22 @@ class PersonProvider extends AbstractAuthorizationService implements PersonProvi
     /**
      * @return array<string, string>|null
      */
-    public function getEmployeeAddress(string $personIdentifier, string $employeeAdressTypeAbbreviation): ?array
+    public function getEmployeeAddress(string $personIdentifier, string $employeeAddressTypeAbbreviation): ?array
     {
         $address = null;
         $personClaims = $this->getPersonFromApiCached($personIdentifier);
         for ($addressIndex = 0; $addressIndex < $personClaims->getNumAddresses(); ++$addressIndex) {
-            if ($personClaims->getEmployeeAddressTypeAbbreviation($addressIndex) === $employeeAdressTypeAbbreviation) {
+            if ($personClaims->getEmployeeAddressTypeAbbreviation($addressIndex) === $employeeAddressTypeAbbreviation) {
                 $address = [
                     'addressTypeKey' => $personClaims->getEmployeeAddressTypeAbbreviation($addressIndex),
                     'street' => $personClaims->getAddressStreet($addressIndex),
                     'postalCode' => $personClaims->getAddressPostalCode($addressIndex),
                     'city' => $personClaims->getAddressCity($addressIndex),
                     'country' => $personClaims->getAddressCountry($addressIndex),
-                    'additionalInformation' => $personClaims->getAdditionalAddressInfo($addressIndex),
                 ];
+                if ($additionalInformation = $personClaims->getAdditionalAddressInfo($addressIndex)) {
+                    $address['additionalInformation'] = $additionalInformation;
+                }
                 break;
             }
         }
