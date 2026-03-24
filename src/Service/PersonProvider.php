@@ -52,6 +52,7 @@ class PersonProvider extends AbstractAuthorizationService implements PersonProvi
     private const ACCOUNT_TYPE_KEYS_TO_FETCH = [
         'STAFF',
         'STUDENT',
+        'A', // alumni
     ];
 
     private const PERSON_CLAIMS_REQUIRED_FOR_CACHE = [
