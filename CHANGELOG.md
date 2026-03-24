@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- offer a method to add persons on cache recreation
+
 ## v0.1.5
 
 - also provide people with alumni accounts

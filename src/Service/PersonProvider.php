@@ -71,6 +71,10 @@ class PersonProvider extends AbstractAuthorizationService implements PersonProvi
         Common::TITLE_CLAIM,
         Common::PERSON_GROUPS_CLAIM,
     ];
+    private const ALL_CLAIMS = [
+        Common::ALL_CLAIM,
+    ];
+
     private const MAX_NUM_PERSON_UIDS_PER_REQUEST = 50;
 
     private ?Connection $connection = null;
@@ -80,6 +84,7 @@ class PersonProvider extends AbstractAuthorizationService implements PersonProvi
     private ?string $currentPersonIdentifier = null;
     private ?Person $currentPerson = null;
     private bool $wasCurrentPersonIdentifierRetrieved = false;
+    private bool $currentlyRecreatingPersonsCache = false;
 
     /**
      * @var array<string, mixed>
@@ -122,7 +127,7 @@ class PersonProvider extends AbstractAuthorizationService implements PersonProvi
     public function checkPersonClaimsApi(): void
     {
         $this->getPersonClaimsApi()->getPersonClaimsPageCursorBased(
-            claims: [Common::ALL_CLAIM],
+            claims: self::ALL_CLAIMS,
             maxNumItems: 1);
     }
 
@@ -156,6 +161,7 @@ class PersonProvider extends AbstractAuthorizationService implements PersonProvi
     {
         $connection = $this->entityManager->getConnection();
         try {
+            $this->currentlyRecreatingPersonsCache = true;
             $this->cachePersonsWithAccountOnly();
 
             $this->eventDispatcher->dispatch(new RecreatePersonCachePostEvent($this->entityManager));
@@ -175,6 +181,7 @@ class PersonProvider extends AbstractAuthorizationService implements PersonProvi
             $this->logger?->error('Error recreating person cache: '.$throwable->getMessage());
             throw $throwable;
         } finally {
+            $this->currentlyRecreatingPersonsCache = false;
             $connection->executeStatement('TRUNCATE TABLE '.CachedPersonStaging::TABLE_NAME);
         }
     }
@@ -260,6 +267,26 @@ class PersonProvider extends AbstractAuthorizationService implements PersonProvi
     public function getCurrentPersonIdentifier(): ?string
     {
         return $this->getCurrentPersonIdentifierInternal();
+    }
+
+    /**
+     * May only be called during person cache re-creation, i.e. on @see RecreatePersonCachePostEvent.
+     *
+     * @param int $personGroupMask the person group mask indicating the person group(s) of the persons to add (default: employees))
+     *
+     * @throws \Throwable
+     */
+    public function addPersonsToStagingTable(array $personIdentifiers, int $personGroupMask = CachedPerson::EMPLOYEE_PERSON_GROUP_MASK): void
+    {
+        if (false === $this->currentlyRecreatingPersonsCache) {
+            throw new \LogicException('adding employees to staging table is only allowed during person cache recreation');
+        }
+        try {
+            $this->addPersonsToStagingTableInternal(array_fill_keys($personIdentifiers, $personGroupMask), true);
+        } catch (\Throwable $throwable) {
+            $this->logger?->error('Error adding persons to staging table: '.$throwable->getMessage());
+            throw $throwable;
+        }
     }
 
     //    /**
@@ -431,7 +458,7 @@ class PersonProvider extends AbstractAuthorizationService implements PersonProvi
             try {
                 $resourcePage = $this->getPersonClaimsApi()->getPersonClaimsPageCursorBased(
                     queryParameters: $queryParameters,
-                    claims: [Common::ALL_CLAIM],
+                    claims: self::ALL_CLAIMS,
                     maxNumItems: self::MAX_NUM_PERSON_UIDS_PER_REQUEST);
             } catch (ApiException $apiException) {
                 if (false === $apiException->isHttpResponseCode()
@@ -441,7 +468,7 @@ class PersonProvider extends AbstractAuthorizationService implements PersonProvi
                 // else ignore known CO bug that returns HTTP 500 (NullPointerException) for some records when addresses are requested
                 $resourcePage = $this->getPersonClaimsApi()->getPersonClaimsPageCursorBased(
                     queryParameters: $queryParameters,
-                    claims: [Common::ALL_CLAIM], // get everything
+                    claims: self::ALL_CLAIMS, // get everything
                     maxNumItems: self::MAX_NUM_PERSON_UIDS_PER_REQUEST);
             }
 
@@ -510,7 +537,7 @@ class PersonProvider extends AbstractAuthorizationService implements PersonProvi
                 }
                 // else ignore known CO bug that returns HTTP 500 (NullPointerException) for some records when addresses are requested
                 $personClaimsCached = $this->getPersonClaimsApi()->getPersonClaimsByPersonUid($personIdentifier, [
-                    [Common::ALL_CLAIM], // get everything
+                    self::ALL_CLAIMS, // get everything
                 ]);
             }
             $this->personClaimsRequestCache[$personIdentifier] = $personClaimsCached;
@@ -655,10 +682,10 @@ class PersonProvider extends AbstractAuthorizationService implements PersonProvi
             $personsToFetch = [];
             /** @var UserResource $userResource */
             foreach ($userResourcePage->getResources() as $userResource) {
-                $personGroupKeys = 0;
+                $personGroupMask = 0;
                 for ($accountIndex = 0; $accountIndex < $userResource->getNumAccounts(); ++$accountIndex) {
                     if ($userResource->getAccountStatusKey($accountIndex) === AccountsCommon::OK_ACCOUNT_STATUS_KEY) {
-                        $personGroupKeys |= match ($userResource->getAccountTypeKey($accountIndex)) {
+                        $personGroupMask |= match ($userResource->getAccountTypeKey($accountIndex)) {
                             self::STAFF_ACCOUNT_TYPE_KEY => CachedPerson::EMPLOYEE_PERSON_GROUP_MASK,
                             self::STUDENT_ACCOUNT_TYPE_KEY => CachedPerson::STUDENT_PERSON_GROUP_MASK,
                             self::ALUMNI_ACCOUNT_TYPE_KEY => CachedPerson::ALUMNI_PERSON_GROUP_MASK,
@@ -666,54 +693,50 @@ class PersonProvider extends AbstractAuthorizationService implements PersonProvi
                         };
                     }
                 }
-                if ($personGroupKeys !== 0) {
-                    $personsToFetch[$userResource->getPersonUid()] = $personGroupKeys;
+                if ($personGroupMask !== 0) {
+                    $personsToFetch[$userResource->getPersonUid()] = $personGroupMask;
                 }
             }
 
-            $currentPersonIndex = 0;
-            while ($currentPersonIndex < count($personsToFetch)) {
-                $personClaimsQueryParameters = [
-                    PersonClaimsApi::PERSON_UID_QUERY_PARAMETER_NAME => array_slice(
-                        array_keys($personsToFetch),
-                        $currentPersonIndex,
-                        self::MAX_NUM_PERSON_UIDS_PER_REQUEST),
-                ];
-
-                foreach ($this->getPersonClaimsApi()->getPersonClaimsPageOffsetBased(
-                    queryParameters: $personClaimsQueryParameters,
-                    claims: self::PERSON_CLAIMS_REQUIRED_FOR_CACHE,
-                    maxNumItems: self::MAX_NUM_PERSON_UIDS_PER_REQUEST) as $personClaimsResource) {
-                    $cachedPersonStaging = self::createCachedPersonStagingFromPersonClaimsResource(
-                        $personClaimsResource);
-                    $cachedPersonStaging->setPersonGroups(
-                        $personsToFetch[$personClaimsResource->getUid()]);
-                    $this->entityManager->persist($cachedPersonStaging);
-                }
-                $currentPersonIndex += self::MAX_NUM_PERSON_UIDS_PER_REQUEST;
-            }
-
-            $this->entityManager->flush();
-            $this->entityManager->clear();
+            $this->addPersonsToStagingTableInternal($personsToFetch);
         } while (($nextUsersCursor = $userResourcePage->getNextCursor()) !== null);
     }
 
-    //    private function cacheAllPersons(): void
-    //    {
-    //        $nextCursor = null;
-    //        do {
-    //            $personClaimResourcePage = $this->getPersonClaimsApi()->getPersonClaimsPageCursorBased(
-    //                claims: self::PERSON_CLAIMS_REQUIRED_FOR_CACHE,
-    //                cursor: $nextCursor,
-    //                maxNumItems: 1000);
-    //
-    //            foreach ($personClaimResourcePage->getResources() as $personClaimsResource) {
-    //                $cachedPersonStaging = self::createCachedPersonStagingFromPersonClaimsResource(
-    //                    $personClaimsResource);
-    //                $this->entityManager->persist($cachedPersonStaging);
-    //            }
-    //            $this->entityManager->flush();
-    //            $this->entityManager->clear();
-    //        } while (($nextCursor = $personClaimResourcePage->getNextCursor()) !== null);
-    //    }
+    /**
+     * @param array<string, int> $personsIdentifiersToPersonGroups A mapping from person uid to person group mask
+     */
+    private function addPersonsToStagingTableInternal(array $personsIdentifiersToPersonGroups, bool $checkIfAlreadyAdded = false): void
+    {
+        $currentPersonIndex = 0;
+        while ($currentPersonIndex < count($personsIdentifiersToPersonGroups)) {
+            $personClaimsQueryParameters = [
+                PersonClaimsApi::PERSON_UID_QUERY_PARAMETER_NAME => array_keys(
+                    array_slice($personsIdentifiersToPersonGroups,
+                        $currentPersonIndex, self::MAX_NUM_PERSON_UIDS_PER_REQUEST, true)
+                ),
+            ];
+
+            /** @var PersonClaimsResource $personClaimsResource */
+            foreach ($this->getPersonClaimsApi()->getPersonClaimsPageOffsetBased(
+                queryParameters: $personClaimsQueryParameters,
+                claims: self::PERSON_CLAIMS_REQUIRED_FOR_CACHE,
+                maxNumItems: self::MAX_NUM_PERSON_UIDS_PER_REQUEST) as $personClaimsResource) {
+                $cachedPersonStaging = null;
+                $personGroupsMask = 0;
+                if ($checkIfAlreadyAdded
+                    && ($cachedPersonStaging =
+                        $this->entityManager->getRepository(CachedPersonStaging::class)->find($personClaimsResource->getUid()))) {
+                    $personGroupsMask = $cachedPersonStaging->getPersonGroups();
+                }
+                $cachedPersonStaging ??= self::createCachedPersonStagingFromPersonClaimsResource($personClaimsResource);
+                $personGroupsMask |= $personsIdentifiersToPersonGroups[$personClaimsResource->getUid()]; // set or add groups
+                $cachedPersonStaging->setPersonGroups($personGroupsMask);
+                $this->entityManager->persist($cachedPersonStaging);
+            }
+
+            $currentPersonIndex += self::MAX_NUM_PERSON_UIDS_PER_REQUEST;
+            $this->entityManager->flush();
+            $this->entityManager->clear();
+        }
+    }
 }
