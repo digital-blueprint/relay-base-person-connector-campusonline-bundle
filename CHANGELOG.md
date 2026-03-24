@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## v0.1.4
+
+- also provide people with alumni accounts
+
 ## v0.1.3
 
 - fix titleSuffix not written to cache table
