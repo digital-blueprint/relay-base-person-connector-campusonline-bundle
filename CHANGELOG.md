@@ -2,7 +2,9 @@
 
 ## Unreleased
 
-- offer a method to add persons on cache recreation
+## v0.1.6
+
+- offer a method to add persons on cache re-creation
 
 ## v0.1.5
 
