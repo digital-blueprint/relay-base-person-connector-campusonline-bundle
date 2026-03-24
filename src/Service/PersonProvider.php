@@ -48,11 +48,15 @@ class PersonProvider extends AbstractAuthorizationService implements PersonProvi
         AccountsCommon::OK_ACCOUNT_STATUS_KEY,
     ];
 
+    private const STAFF_ACCOUNT_TYPE_KEY = 'STAFF';
+    private const STUDENT_ACCOUNT_TYPE_KEY = 'STUDENT';
+    private const ALUMNI_ACCOUNT_TYPE_KEY = 'A';
+
     // TODO: make non-const account type keys configurable via config instead of hardcoding them
     private const ACCOUNT_TYPE_KEYS_TO_FETCH = [
-        'STAFF',
-        'STUDENT',
-        'A', // alumni
+        self::STAFF_ACCOUNT_TYPE_KEY,
+        self::STUDENT_ACCOUNT_TYPE_KEY,
+        self::ALUMNI_ACCOUNT_TYPE_KEY,
     ];
 
     private const PERSON_CLAIMS_REQUIRED_FOR_CACHE = [
@@ -655,8 +659,9 @@ class PersonProvider extends AbstractAuthorizationService implements PersonProvi
                 for ($accountIndex = 0; $accountIndex < $userResource->getNumAccounts(); ++$accountIndex) {
                     if ($userResource->getAccountStatusKey($accountIndex) === AccountsCommon::OK_ACCOUNT_STATUS_KEY) {
                         $personGroupKeys |= match ($userResource->getAccountTypeKey($accountIndex)) {
-                            'STAFF' => CachedPerson::EMPLOYEE_PERSON_GROUP_MASK,
-                            'STUDENT' => CachedPerson::STUDENT_PERSON_GROUP_MASK,
+                            self::STAFF_ACCOUNT_TYPE_KEY => CachedPerson::EMPLOYEE_PERSON_GROUP_MASK,
+                            self::STUDENT_ACCOUNT_TYPE_KEY => CachedPerson::STUDENT_PERSON_GROUP_MASK,
+                            self::ALUMNI_ACCOUNT_TYPE_KEY => CachedPerson::ALUMNI_PERSON_GROUP_MASK,
                             default => 0,
                         };
                     }

@@ -37,7 +37,7 @@ trait CachedPersonTrait
 
     public const STUDENT_PERSON_GROUP_MASK = 0b00000001;
     public const EMPLOYEE_PERSON_GROUP_MASK = 0b00000010;
-    public const EXTERNAL_PERSON_GROUP_MASK = 0b00000100;
+    public const ALUMNI_PERSON_GROUP_MASK = 0b00000100;
 
     #[ORM\Id]
     #[ORM\Column(name: self::UID_COLUMN_NAME, type: 'string', length: 32)]
@@ -178,8 +178,8 @@ trait CachedPersonTrait
         return ($personGroups & self::EMPLOYEE_PERSON_GROUP_MASK) === self::EMPLOYEE_PERSON_GROUP_MASK;
     }
 
-    public static function testIsExternalPerson(int $personGroups): bool
+    public static function testIsAlumni(int $personGroups): bool
     {
-        return ($personGroups & self::EXTERNAL_PERSON_GROUP_MASK) === self::EXTERNAL_PERSON_GROUP_MASK;
+        return ($personGroups & self::ALUMNI_PERSON_GROUP_MASK) === self::ALUMNI_PERSON_GROUP_MASK;
     }
 }
