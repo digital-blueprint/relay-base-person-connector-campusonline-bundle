@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v0.1.7
+
 - offer two new methods getPersonIdentifierByUsername and getPersonIdentifierByEmail 
 to fetch the person identifier by username or email address
 
