@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- offer two new methods getPersonIdentifierByUsername and getPersonIdentifierByEmail 
+to fetch the person identifier by username or email address
+
 ## v0.1.6
 
 - offer a method to add persons on cache re-creation

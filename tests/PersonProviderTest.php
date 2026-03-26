@@ -225,7 +225,31 @@ class PersonProviderTest extends ApiTestCase
         $this->assertCount(0, $persons);
     }
 
-    private function mockResponses(): void
+    public function testGetPersonIdentifierByUsername(): void
+    {
+        $this->mockUserApiResponse();
+
+        $personIdentifier = $this->personProvider->getPersonIdentifierByUsername('maxm');
+        $this->assertEquals('019ce14a-607b-7220-8a50-21a4dc9fdaf8', $personIdentifier);
+
+        $this->mockEmptyUserApiResponse();
+
+        $this->assertNull($this->personProvider->getPersonIdentifierByUsername('foo'));
+    }
+
+    public function testGetPersonIdentifierByEmail(): void
+    {
+        $this->mockUserApiResponse();
+
+        $personIdentifier = $this->personProvider->getPersonIdentifierByEmail('max.mustermann@someuni.at');
+        $this->assertEquals('019ce14a-607b-7220-8a50-21a4dc9fdaf8', $personIdentifier);
+
+        $this->mockEmptyUserApiResponse();
+
+        $this->assertNull($this->personProvider->getPersonIdentifierByEmail('foo'));
+    }
+
+    private function mockResponsesForPersonCacheRecreation(): void
     {
         $responses = [...self::createMockAuthServerResponses(),
             new Response(
@@ -255,9 +279,36 @@ class PersonProviderTest extends ApiTestCase
         $this->personProvider->setClientHandler($stack);
     }
 
+    private function mockUserApiResponse(): void
+    {
+        $this->mockUserApiResponseWithContent(
+            file_get_contents(__DIR__.'/users_api_response.json')
+        );
+    }
+
+    private function mockEmptyUserApiResponse(): void
+    {
+        $this->mockUserApiResponseWithContent(
+            file_get_contents(__DIR__.'/empty_api_response.json')
+        );
+    }
+
+    private function mockUserApiResponseWithContent(string $content): void
+    {
+        $responses = [...self::createMockAuthServerResponses(),
+            new Response(
+                200,
+                ['Content-Type' => 'application/json'],
+                $content),
+        ];
+
+        $stack = HandlerStack::create(new MockHandler($responses));
+        $this->personProvider->setClientHandler($stack);
+    }
+
     private function recreatePersonCache(): void
     {
-        $this->mockResponses();
+        $this->mockResponsesForPersonCacheRecreation();
         try {
             // this is expected to fail, since sqlite does not support some operations
             $this->personProvider->recreatePersonsCache();

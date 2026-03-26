@@ -9,6 +9,7 @@ use Dbp\CampusonlineApi\PublicRestApi\Accounts\Common as AccountsCommon;
 use Dbp\CampusonlineApi\PublicRestApi\Accounts\UserApi;
 use Dbp\CampusonlineApi\PublicRestApi\Accounts\UserResource;
 use Dbp\CampusonlineApi\PublicRestApi\Connection;
+use Dbp\CampusonlineApi\PublicRestApi\CursorBasedResourcePage;
 use Dbp\CampusonlineApi\PublicRestApi\Persons\Common;
 use Dbp\CampusonlineApi\PublicRestApi\Persons\PersonClaimsApi;
 use Dbp\CampusonlineApi\PublicRestApi\Persons\PersonClaimsResource;
@@ -269,6 +270,30 @@ class PersonProvider extends AbstractAuthorizationService implements PersonProvi
         return $this->getCurrentPersonIdentifierInternal();
     }
 
+    public function getPersonIdentifierByUsername(string $username): ?string
+    {
+        try {
+            /** @var ?UserResource $userResource */
+            $userResource = iterator_to_array($this->getUsersFromCOApi(['username' => $username])->getResources())[0] ?? null;
+        } catch (\Throwable $throwable) {
+            throw $this->dispatchException($throwable, 'failed to get users form CO Users API');
+        }
+
+        return $userResource?->getPersonUid();
+    }
+
+    public function getPersonIdentifierByEmail(string $email): ?string
+    {
+        try {
+            /** @var ?UserResource $userResource */
+            $userResource = iterator_to_array($this->getUsersFromCOApi(['email' => $email])->getResources())[0] ?? null;
+        } catch (\Throwable $throwable) {
+            throw $this->dispatchException($throwable, 'failed to get users form CO Users API');
+        }
+
+        return $userResource?->getPersonUid();
+    }
+
     /**
      * May only be called during person cache re-creation, i.e. on @see RecreatePersonCachePostEvent.
      *
@@ -284,8 +309,7 @@ class PersonProvider extends AbstractAuthorizationService implements PersonProvi
         try {
             $this->addPersonsToStagingTableInternal(array_fill_keys($personIdentifiers, $personGroupMask), true);
         } catch (\Throwable $throwable) {
-            $this->logger?->error('Error adding persons to staging table: '.$throwable->getMessage());
-            throw $throwable;
+            throw $this->dispatchException($throwable, 'Error adding persons to staging table');
         }
     }
 
@@ -426,9 +450,8 @@ class PersonProvider extends AbstractAuthorizationService implements PersonProvi
             }
 
             return $personAndExtraDataPage;
-        } catch (\Throwable $exception) {
-            $this->logger->error('failed to get persons from cache: '.$exception->getMessage(), [$exception]);
-            throw ApiError::withDetails(Response::HTTP_INTERNAL_SERVER_ERROR, 'failed to get persons');
+        } catch (\Throwable $throwable) {
+            throw $this->dispatchException($throwable, 'failed to get persons from cache');
         }
     }
 
@@ -460,16 +483,8 @@ class PersonProvider extends AbstractAuthorizationService implements PersonProvi
                     queryParameters: $queryParameters,
                     claims: self::ALL_CLAIMS,
                     maxNumItems: self::MAX_NUM_PERSON_UIDS_PER_REQUEST);
-            } catch (ApiException $apiException) {
-                if (false === $apiException->isHttpResponseCode()
-                    || $apiException->getCode() !== Response::HTTP_INTERNAL_SERVER_ERROR) {
-                    throw self::dispatchException($apiException);
-                }
-                // else ignore known CO bug that returns HTTP 500 (NullPointerException) for some records when addresses are requested
-                $resourcePage = $this->getPersonClaimsApi()->getPersonClaimsPageCursorBased(
-                    queryParameters: $queryParameters,
-                    claims: self::ALL_CLAIMS, // get everything
-                    maxNumItems: self::MAX_NUM_PERSON_UIDS_PER_REQUEST);
+            } catch (\Throwable $throwable) {
+                throw $this->dispatchException($throwable, 'failed to get persons form CO person claims API');
             }
 
             /** @var PersonClaimsResource $personClaimsResource */
@@ -527,18 +542,10 @@ class PersonProvider extends AbstractAuthorizationService implements PersonProvi
     {
         if (($personClaimsCached = $this->personClaimsRequestCache[$personIdentifier] ?? null) === null) {
             try {
-                $personClaimsCached = $this->getPersonClaimsApi()->getPersonClaimsByPersonUid($personIdentifier, [
-                    Common::ALL_CLAIM,
-                ]);
-            } catch (ApiException $apiException) {
-                if (false === $apiException->isHttpResponseCode()
-                    || $apiException->getCode() !== Response::HTTP_INTERNAL_SERVER_ERROR) {
-                    throw self::dispatchException($apiException, $personIdentifier);
-                }
-                // else ignore known CO bug that returns HTTP 500 (NullPointerException) for some records when addresses are requested
-                $personClaimsCached = $this->getPersonClaimsApi()->getPersonClaimsByPersonUid($personIdentifier, [
-                    self::ALL_CLAIMS, // get everything
-                ]);
+                $personClaimsCached = $this->getPersonClaimsApi()->getPersonClaimsByPersonUid(
+                    $personIdentifier, self::ALL_CLAIMS);
+            } catch (\Throwable $throwable) {
+                throw $this->dispatchException($throwable, 'failed to get person from CO person claims API');
             }
             $this->personClaimsRequestCache[$personIdentifier] = $personClaimsCached;
         }
@@ -646,39 +653,31 @@ class PersonProvider extends AbstractAuthorizationService implements PersonProvi
      *
      * @throws ApiError
      */
-    private static function dispatchException(ApiException $apiException, ?string $identifier = null): ApiError
+    private function dispatchException(\Throwable $throwable, ?string $logMessage = null): ApiError
     {
-        if ($apiException->isHttpResponseCode()) {
-            switch ($apiException->getCode()) {
-                case Response::HTTP_NOT_FOUND:
-                    if ($identifier !== null) {
-                        return new ApiError(Response::HTTP_NOT_FOUND, sprintf("Id '%s' could not be found!", $identifier));
-                    }
-                    break;
-                case Response::HTTP_UNAUTHORIZED:
-                    return new ApiError(Response::HTTP_UNAUTHORIZED, sprintf("Id '%s' could not be found or access denied!", $identifier));
-            }
-            if ($apiException->getCode() >= 500) {
-                return new ApiError(Response::HTTP_BAD_GATEWAY, 'failed to get organizations from Campusonline');
+        $apiError = null;
+        if ($throwable instanceof ApiException) {
+            if ($throwable->isHttpResponseCode()) {
+                if ($throwable->getCode() === Response::HTTP_NOT_FOUND) {
+                    $apiError = new ApiError(Response::HTTP_NOT_FOUND, sprintf('person could not be found'));
+                    $logMessage = null; // don't log 404s
+                } elseif ($throwable->getCode() >= 500) {
+                    $apiError = new ApiError(Response::HTTP_BAD_GATEWAY, 'failed to get persons or users from Campusonline');
+                }
             }
         }
+        if (null !== $logMessage) {
+            $this->logger->error($logMessage.': '.$throwable->getMessage(), [$throwable]);
+        }
 
-        return new ApiError(Response::HTTP_INTERNAL_SERVER_ERROR, 'failed to get person(s): '.$apiException->getMessage());
+        return $apiError ?? new ApiError(Response::HTTP_INTERNAL_SERVER_ERROR, 'failed to get person(s)');
     }
 
     private function cachePersonsWithAccountOnly(): void
     {
-        $userApiQueryParameters = [
-            UserApi::ACCOUNT_STATUS_KEY_QUERY_PARAMETER_NAME => self::ACCOUNT_STATUS_KEYS_TO_FETCH,
-            UserApi::ACCOUNT_TYPE_KEY_QUERY_PARAMETER_NAME => self::ACCOUNT_TYPE_KEYS_TO_FETCH,
-        ];
         $nextUsersCursor = null;
         do {
-            $userResourcePage = $this->getUserApi()->getUsersCursorBased(
-                queryParameters: $userApiQueryParameters,
-                cursor: $nextUsersCursor,
-                maxNumItems: 1000);
-
+            $userResourcePage = $this->getUsersFromCOApi([], $nextUsersCursor);
             $personsToFetch = [];
             /** @var UserResource $userResource */
             foreach ($userResourcePage->getResources() as $userResource) {
@@ -738,5 +737,16 @@ class PersonProvider extends AbstractAuthorizationService implements PersonProvi
             $this->entityManager->flush();
             $this->entityManager->clear();
         }
+    }
+
+    private function getUsersFromCOApi(array $queryParameters, ?string $nextCursor = null): CursorBasedResourcePage
+    {
+        $queryParameters[UserApi::ACCOUNT_STATUS_KEY_QUERY_PARAMETER_NAME] ??= self::ACCOUNT_STATUS_KEYS_TO_FETCH;
+        $queryParameters[UserApi::ACCOUNT_TYPE_KEY_QUERY_PARAMETER_NAME] ??= self::ACCOUNT_TYPE_KEYS_TO_FETCH;
+
+        return $this->getUserApi()->getUsersCursorBased(
+            queryParameters: $queryParameters,
+            cursor: $nextCursor,
+            maxNumItems: 1000);
     }
 }
