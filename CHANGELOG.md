@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v0.1.8
+
 - implement request caching of users representing the current persons of the current result
 - add local data source attributes "employeeAdditionalInformation" and "employeeOfficeHours"
 
