@@ -12,6 +12,7 @@ use Dbp\Relay\BasePersonConnectorCampusonlineBundle\Entity\CachedPerson;
 use Dbp\Relay\BasePersonConnectorCampusonlineBundle\Entity\CachedPersonStaging;
 use Dbp\Relay\BasePersonConnectorCampusonlineBundle\EventSubscriber\PersonEventSubscriber;
 use Dbp\Relay\BasePersonConnectorCampusonlineBundle\Service\PersonProvider;
+use Dbp\Relay\CoreBundle\Exception\ApiError;
 use Dbp\Relay\CoreBundle\Rest\Options;
 use Dbp\Relay\CoreBundle\TestUtils\TestAuthorizationService;
 use Dbp\Relay\CoreBundle\TestUtils\TestEntityManager;
@@ -249,6 +250,42 @@ class PersonProviderTest extends ApiTestCase
         $this->assertNull($this->personProvider->getPersonIdentifierByEmail('foo'));
     }
 
+    public function testGetUserFromApiCached(): void
+    {
+        $this->mockUserApiResponse();
+
+        $user = $this->personProvider->getUserFromApiCached(self::TEST_USER_IDENTIFIER);
+        $this->assertSame(self::TEST_USER_IDENTIFIER, $user->getPersonUid());
+        $this->assertSame('max.mustermann@someuni.at', $user->getEmail(0));
+        $this->assertSame('maxm', $user->getUsername(0));
+    }
+
+    public function testGetUserFromApiCachedNotFound(): void
+    {
+        $this->mockUserApiResponse404();
+
+        try {
+            $this->personProvider->getUserFromApiCached('foo');
+            $this->fail('expected ApiError not thrown');
+        } catch (ApiError $apiError) {
+            $this->assertSame(\Symfony\Component\HttpFoundation\Response::HTTP_NOT_FOUND, $apiError->getStatusCode());
+        }
+    }
+
+    public function testRequestCacheCurrentResultUsers(): void
+    {
+        $this->personProvider->getPerson(self::TEST_USER_IDENTIFIER); // caches the person ids of current request result
+
+        $this->mockUserApiResponse();
+        $this->personProvider->requestCacheCurrentResultUsers();
+
+        // NOTE: no more requests must be made
+        $user = $this->personProvider->getUserFromApiCached(self::TEST_USER_IDENTIFIER);
+        $this->assertSame(self::TEST_USER_IDENTIFIER, $user->getPersonUid());
+        $this->assertSame('max.mustermann@someuni.at', $user->getEmail(0));
+        $this->assertSame('maxm', $user->getUsername(0));
+    }
+
     private function mockResponsesForPersonCacheRecreation(): void
     {
         $responses = [...self::createMockAuthServerResponses(),
@@ -293,11 +330,19 @@ class PersonProviderTest extends ApiTestCase
         );
     }
 
-    private function mockUserApiResponseWithContent(string $content): void
+    private function mockUserApiResponse404(): void
+    {
+        $this->mockUserApiResponseWithContent(
+            file_get_contents(__DIR__.'/empty_api_response.json'),
+            404
+        );
+    }
+
+    private function mockUserApiResponseWithContent(string $content, int $status = 200): void
     {
         $responses = [...self::createMockAuthServerResponses(),
             new Response(
-                200,
+                $status,
                 ['Content-Type' => 'application/json'],
                 $content),
         ];

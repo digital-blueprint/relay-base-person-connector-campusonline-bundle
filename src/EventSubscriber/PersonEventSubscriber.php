@@ -15,11 +15,13 @@ class PersonEventSubscriber extends AbstractLocalDataEventSubscriber
 {
     public const EMPLOYEE_POSTAL_ADDRESS_SOURCE_ATTRIBUTE = 'employeePostalAddress';
     public const EMPLOYEE_WORK_ADDRESS_SOURCE_ATTRIBUTE = 'employeeWorkAddress';
-    public const BUSINESS_CARD_URL_EMPLOYEE_SOURCE_ATTRIBUTE = 'businessCardUrlEmployee';
-    public const MOBILE_PHONE_NUMBER_EMPLOYEE_SOURCE_ATTRIBUTE = 'mobilePhoneNumberEmployee';
-    public const EXTERNAL_PHONE_NUMBER_EMPLOYEE_SOURCE_ATTRIBUTE = 'externalPhoneNumberEmployee';
-    public const INTERNAL_PHONE_NUMBERS_EMPLOYEE_SOURCE_ATTRIBUTE = 'internalPhoneNumbersEmployee';
-    public const WWW_HOMEPAGE_EMPLOYEE_SOURCE_ATTRIBUTE = 'wwwHomepageEmployee';
+    public const EMPLOYEE_BUSINESS_CARD_URL_SOURCE_ATTRIBUTE = 'employeeBusinessCardUrl';
+    public const EMPLOYEE_MOBILE_PHONE_NUMBER_SOURCE_ATTRIBUTE = 'employeeMobilePhoneNumber';
+    public const EMPLOYEE_EXTERNAL_PHONE_NUMBER_SOURCE_ATTRIBUTE = 'employeeExternalPhoneNumber';
+    public const EMPLOYEE_INTERNAL_PHONE_NUMBERS_SOURCE_ATTRIBUTE = 'employeeInternalPhoneNumbers';
+    public const EMPLOYEE_HOMEPAGE_URL_SOURCE_ATTRIBUTE = 'employeeHomepageUrl';
+    public const EMPLOYEE_ADDITIONAL_INFORMATION_SOURCE_ATTRIBUTE = 'employeeAdditionalInformation';
+    public const EMPLOYEE_OFFICE_HOURS_SOURCE_ATTRIBUTE = 'employeeOfficeHours';
 
     protected static function getSubscribedEventNames(): array
     {
@@ -42,33 +44,41 @@ class PersonEventSubscriber extends AbstractLocalDataEventSubscriber
 
         switch ($attributeMapEntry[self::SOURCE_ATTRIBUTE_KEY]) {
             case self::EMPLOYEE_POSTAL_ADDRESS_SOURCE_ATTRIBUTE:
-                $this->personProvider->getAndCacheCurrentResultPersonsFromApi();
+                $this->personProvider->requestCacheCurrentResultPersons();
 
                 return $this->personProvider->getEmployeePostalAddress($personIdentifier);
             case self::EMPLOYEE_WORK_ADDRESS_SOURCE_ATTRIBUTE:
-                $this->personProvider->getAndCacheCurrentResultPersonsFromApi();
+                $this->personProvider->requestCacheCurrentResultPersons();
 
                 return $this->personProvider->getEmployeeWorkAddress($personIdentifier);
-            case self::BUSINESS_CARD_URL_EMPLOYEE_SOURCE_ATTRIBUTE:
-                $this->personProvider->getAndCacheCurrentResultPersonsFromApi();
+            case self::EMPLOYEE_BUSINESS_CARD_URL_SOURCE_ATTRIBUTE:
+                $this->personProvider->requestCacheCurrentResultPersons();
 
                 return $this->personProvider->getPersonFromApiCached($personIdentifier)->getBusinessCardUrlEmployee();
-            case self::MOBILE_PHONE_NUMBER_EMPLOYEE_SOURCE_ATTRIBUTE:
-                $this->personProvider->getAndCacheCurrentResultPersonsFromApi();
+            case self::EMPLOYEE_MOBILE_PHONE_NUMBER_SOURCE_ATTRIBUTE:
+                $this->personProvider->requestCacheCurrentResultPersons();
 
                 return $this->personProvider->getPersonFromApiCached($personIdentifier)->getMobilePhoneNumberEmployee();
-            case self::EXTERNAL_PHONE_NUMBER_EMPLOYEE_SOURCE_ATTRIBUTE:
-                $this->personProvider->getAndCacheCurrentResultPersonsFromApi();
+            case self::EMPLOYEE_EXTERNAL_PHONE_NUMBER_SOURCE_ATTRIBUTE:
+                $this->personProvider->requestCacheCurrentResultPersons();
 
                 return $this->personProvider->getPersonFromApiCached($personIdentifier)->getExternalPhoneNumberEmployee();
-            case self::INTERNAL_PHONE_NUMBERS_EMPLOYEE_SOURCE_ATTRIBUTE:
-                $this->personProvider->getAndCacheCurrentResultPersonsFromApi();
+            case self::EMPLOYEE_INTERNAL_PHONE_NUMBERS_SOURCE_ATTRIBUTE:
+                $this->personProvider->requestCacheCurrentResultPersons();
 
                 return $this->personProvider->getPersonFromApiCached($personIdentifier)->getInternalPhoneNumbersEmployee();
-            case self::WWW_HOMEPAGE_EMPLOYEE_SOURCE_ATTRIBUTE:
-                $this->personProvider->getAndCacheCurrentResultPersonsFromApi();
+            case self::EMPLOYEE_HOMEPAGE_URL_SOURCE_ATTRIBUTE:
+                $this->personProvider->requestCacheCurrentResultPersons();
 
                 return $this->personProvider->getPersonFromApiCached($personIdentifier)->getWwwHomepageEmployee();
+            case self::EMPLOYEE_ADDITIONAL_INFORMATION_SOURCE_ATTRIBUTE:
+                $this->personProvider->requestCacheCurrentResultPersons();
+
+                return $this->personProvider->getPersonFromApiCached($personIdentifier)->getAdditionalInformation();
+            case self::EMPLOYEE_OFFICE_HOURS_SOURCE_ATTRIBUTE:
+                $this->personProvider->requestCacheCurrentResultPersons();
+
+                return $this->personProvider->getPersonFromApiCached($personIdentifier)->getOfficeHoursEmployee();
         }
 
         return parent::getAttributeValue($postEvent, $attributeMapEntry); // TODO: Change the autogenerated stub

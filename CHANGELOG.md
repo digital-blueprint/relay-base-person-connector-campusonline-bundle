@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- implement request caching of users representing the current persons of the current result
+- add local data source attributes "employeeAdditionalInformation" and "employeeOfficeHours"
+
 ## v0.1.7
 
 - offer two new methods getPersonIdentifierByUsername and getPersonIdentifierByEmail 
