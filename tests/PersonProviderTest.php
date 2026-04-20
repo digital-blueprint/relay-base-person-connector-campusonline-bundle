@@ -21,6 +21,7 @@ use GuzzleHttp\Handler\MockHandler;
 use GuzzleHttp\HandlerStack;
 use GuzzleHttp\Psr7\Response;
 use Psr\Log\NullLogger;
+use Symfony\Component\Cache\Adapter\ArrayAdapter;
 use Symfony\Component\EventDispatcher\EventDispatcher;
 
 /**
@@ -34,7 +35,6 @@ class PersonProviderTest extends ApiTestCase
     private const EMPLOYEE_POSTAL_ADDRESS_ATTRIBUTE = 'employeeWorkAddress';
 
     private ?PersonProvider $personProvider = null;
-    private ?PersonEventSubscriber $personEventSubscriber = null;
     private ?EntityManager $entityManager = null;
 
     private static function getConfig(): array
@@ -80,13 +80,15 @@ class PersonProviderTest extends ApiTestCase
             DbpRelayBasePersonConnectorCampusonlineExtension::ENTITY_MANAGER_ID);
 
         $eventDispatcher = new EventDispatcher();
-        $this->personProvider = new PersonProvider($this->entityManager, $eventDispatcher);
+        $this->personProvider = new PersonProvider(
+            $this->entityManager, new ArrayAdapter(), $eventDispatcher);
         $this->personProvider->setLogger(new NullLogger());
         $this->personProvider->setConfig(self::getConfig());
 
-        $this->personEventSubscriber = new PersonEventSubscriber($this->personProvider);
-        $this->personEventSubscriber->setConfig(self::getConfig());
-        $eventDispatcher->addSubscriber($this->personEventSubscriber);
+        $personEventSubscriber = null;
+        $personEventSubscriber = new PersonEventSubscriber($this->personProvider);
+        $personEventSubscriber->setConfig(self::getConfig());
+        $eventDispatcher->addSubscriber($personEventSubscriber);
 
         $this->recreatePersonCache();
         $this->login();

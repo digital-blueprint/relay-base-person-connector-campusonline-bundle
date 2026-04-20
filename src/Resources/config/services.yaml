@@ -9,8 +9,11 @@ services:
     autowire: true
     autoconfigure: true
 
-  Dbp\Relay\BasePersonConnectorCampusonlineBundle\Service\:
-    resource: '../../Service'
+  Dbp\Relay\BasePersonConnectorCampusonlineBundle\Service\HealthCheck:
+    autowire: true
+    autoconfigure: true
+
+  Dbp\Relay\BasePersonConnectorCampusonlineBundle\Service\RecreateCacheCommand:
     autowire: true
     autoconfigure: true
 

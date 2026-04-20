@@ -34,10 +34,12 @@ use Dbp\Relay\CoreBundle\Rest\Query\Pagination\Pagination;
 use Dbp\Relay\CoreBundle\Rest\Query\Sort\SortTools;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\Tools\Pagination\Paginator;
+use Psr\Cache\CacheItemPoolInterface;
 use Psr\Log\LoggerAwareInterface;
 use Psr\Log\LoggerAwareTrait;
 use Symfony\Component\EventDispatcher\EventDispatcherInterface;
 use Symfony\Component\HttpFoundation\Response;
+use Symfony\Contracts\Cache\NamespacedPoolInterface;
 
 class PersonProvider extends AbstractAuthorizationService implements PersonProviderInterface, LoggerAwareInterface
 {
@@ -109,9 +111,14 @@ class PersonProvider extends AbstractAuthorizationService implements PersonProvi
 
     public function __construct(
         private readonly EntityManagerInterface $entityManager,
+        private readonly CacheItemPoolInterface $campusonlineApiCache,
         EventDispatcherInterface $eventDispatcher)
     {
         parent::__construct();
+
+        if ($this->campusonlineApiCache instanceof NamespacedPoolInterface) {
+            $this->campusonlineApiCache->withSubNamespace('DbpCampusonlineApi');
+        }
 
         $this->eventDispatcher = new LocalDataEventDispatcher('', $eventDispatcher);
     }
