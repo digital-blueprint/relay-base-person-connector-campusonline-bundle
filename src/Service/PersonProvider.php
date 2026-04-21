@@ -24,6 +24,7 @@ use Dbp\Relay\BasePersonConnectorCampusonlineBundle\Event\RecreatePersonCachePos
 use Dbp\Relay\CoreBundle\Authorization\AbstractAuthorizationService;
 use Dbp\Relay\CoreBundle\Doctrine\QueryHelper;
 use Dbp\Relay\CoreBundle\Exception\ApiError;
+use Dbp\Relay\CoreBundle\Helpers\Tools;
 use Dbp\Relay\CoreBundle\LocalData\LocalDataEventDispatcher;
 use Dbp\Relay\CoreBundle\Rest\Options;
 use Dbp\Relay\CoreBundle\Rest\Query\Filter\Filter;
@@ -479,16 +480,23 @@ class PersonProvider extends AbstractAuthorizationService implements PersonProvi
         $personClaims = $this->getPersonFromApiCached($personIdentifier);
         for ($addressIndex = 0; $addressIndex < $personClaims->getNumAddresses(); ++$addressIndex) {
             if ($personClaims->getEmployeeAddressTypeAbbreviation($addressIndex) === $employeeAddressTypeAbbreviation) {
-                $address = [
-                    'addressTypeKey' => $personClaims->getEmployeeAddressTypeAbbreviation($addressIndex),
-                    'street' => $personClaims->getAddressStreet($addressIndex),
-                    'postalCode' => $personClaims->getAddressPostalCode($addressIndex),
-                    'city' => $personClaims->getAddressCity($addressIndex),
-                    'country' => $personClaims->getAddressCountry($addressIndex),
-                ];
-                if ($additionalInformation = $personClaims->getAdditionalAddressInfo($addressIndex)) {
-                    $address['additionalInformation'] = $additionalInformation;
+                $address = Tools::createAddressArray(
+                    street: $personClaims->getAddressStreet($addressIndex),
+                    postalCode: $personClaims->getAddressPostalCode($addressIndex),
+                    city: $personClaims->getAddressCity($addressIndex),
+                    country: $personClaims->getAddressCountry($addressIndex),
+                    additionalInformation: $personClaims->getAdditionalAddressInfo($addressIndex)
+                );
+                if ($addressTypeKey = $personClaims->getEmployeeAddressTypeAbbreviation($addressIndex)) {
+                    $address['addressTypeKey'] = $addressTypeKey;
                 }
+                if ($roomIdentifier = $personClaims->getRoomUid($addressIndex)) {
+                    $address['roomIdentifier'] = (string) $roomIdentifier;
+                }
+                if ($contactOrganizationIdentifier = $personClaims->getContactOrgUid($addressIndex)) {
+                    $address['contactOrganizationIdentifier'] = (string) $contactOrganizationIdentifier;
+                }
+
                 break;
             }
         }
@@ -551,6 +559,7 @@ class PersonProvider extends AbstractAuthorizationService implements PersonProvi
                 $this->config['client_id'],
                 $this->config['client_secret']
             );
+            $this->connection->setLogger($this->logger);
         }
 
         return $this->connection;

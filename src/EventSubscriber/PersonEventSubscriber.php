@@ -19,6 +19,7 @@ class PersonEventSubscriber extends AbstractLocalDataEventSubscriber
     public const EMPLOYEE_MOBILE_PHONE_NUMBER_SOURCE_ATTRIBUTE = 'employeeMobilePhoneNumber';
     public const EMPLOYEE_EXTERNAL_PHONE_NUMBER_SOURCE_ATTRIBUTE = 'employeeExternalPhoneNumber';
     public const EMPLOYEE_INTERNAL_PHONE_NUMBERS_SOURCE_ATTRIBUTE = 'employeeInternalPhoneNumbers';
+    public const EMPLOYEE_FAX_NUMBER_SOURCE_ATTRIBUTE = 'employeeFaxNumber';
     public const EMPLOYEE_HOMEPAGE_URL_SOURCE_ATTRIBUTE = 'employeeHomepageUrl';
     public const EMPLOYEE_ADDITIONAL_INFORMATION_SOURCE_ATTRIBUTE = 'employeeAdditionalInformation';
     public const EMPLOYEE_OFFICE_HOURS_SOURCE_ATTRIBUTE = 'employeeOfficeHours';
@@ -67,6 +68,10 @@ class PersonEventSubscriber extends AbstractLocalDataEventSubscriber
                 $this->personProvider->requestCacheCurrentResultPersons();
 
                 return $this->personProvider->getPersonFromApiCached($personIdentifier)->getInternalPhoneNumbersEmployee();
+            case self::EMPLOYEE_FAX_NUMBER_SOURCE_ATTRIBUTE:
+                $this->personProvider->requestCacheCurrentResultPersons();
+
+                return $this->personProvider->getPersonFromApiCached($personIdentifier)->getFaxNumberEmployee();
             case self::EMPLOYEE_HOMEPAGE_URL_SOURCE_ATTRIBUTE:
                 $this->personProvider->requestCacheCurrentResultPersons();
 

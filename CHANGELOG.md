@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Add employeeFaxNumber local data source attribute
+- Add roomIdentifier and contactOrganizationIdentifier to employeeWorkAddress local data source attribute
 - Prepare campusonline-api cache
 
 ## v0.1.8
