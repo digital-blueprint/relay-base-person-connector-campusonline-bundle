@@ -86,7 +86,13 @@ class PersonProvider extends AbstractAuthorizationService implements PersonProvi
     private ?UserApi $userApi = null;
     private LocalDataEventDispatcher $eventDispatcher;
     private ?string $currentPersonIdentifier = null;
-    private ?Person $currentPerson = null;
+
+    /**
+     * @var Person|bool|null
+     *
+     * False means not initialized
+     */
+    private mixed $currentPerson = false;
     private bool $wasCurrentPersonIdentifierRetrieved = false;
     private bool $currentlyRecreatingPersonsCache = false;
 
@@ -106,9 +112,9 @@ class PersonProvider extends AbstractAuthorizationService implements PersonProvi
     private ?array $usersRequestCache = null;
 
     /**
-     * @var string[]
+     * @var array<string, CachedPerson>
      */
-    private array $currentResultPersonUids = [];
+    private array $currentResultCachedPersons = [];
 
     public function __construct(
         private readonly EntityManagerInterface $entityManager,
@@ -160,12 +166,13 @@ class PersonProvider extends AbstractAuthorizationService implements PersonProvi
     {
         parent::reset();
 
-        $this->currentPerson = null;
+        $this->currentPerson = false;
         $this->currentPersonIdentifier = null;
+        $this->wasCurrentPersonIdentifierRetrieved = false;
         $this->connection = null;
         $this->personClaimsApi = null;
         $this->userApi = null;
-        $this->currentResultPersonUids = [];
+        $this->currentResultCachedPersons = [];
         $this->personClaimsRequestCache = null;
         $this->usersRequestCache = null;
     }
@@ -267,14 +274,62 @@ class PersonProvider extends AbstractAuthorizationService implements PersonProvi
 
     public function getCurrentPerson(array $options = []): ?Person
     {
-        $this->eventDispatcher->onNewOperation($options);
+        if ($this->currentPerson === false
+            || ($this->currentPerson !== null
+                && false === LocalDataEventDispatcher::areRequestedLocalDataAttributesIdentical(
+                    $this->currentPerson, Options::getLocalDataAttributes($options)))) {
+            // currentPerson not initialized yet (=== false) or requested local data attributes have changed
+            if ($currentCachedPerson = $this->getCurrentCachedPerson()) {
+                $this->eventDispatcher->onNewOperation($options);
+                $this->currentPerson = $this->postProcessPerson(
+                    self::createPersonAndExtraDataFromCachedPerson($currentCachedPerson, $options),
+                    $options
+                );
+            } else {
+                $this->currentPerson = null;
+            }
+        }
 
-        if ((
-            $this->currentPerson === null
-            || false === $this->eventDispatcher->checkRequestedAttributesIdentical($this->currentPerson)
-        )
-        && null !== ($currentPersonIdentifier = $this->getCurrentPersonIdentifierInternal())) {
-            $this->currentPerson = $this->getPerson($currentPersonIdentifier, $options);
+        return $this->currentPerson;
+    }
+
+    public function _getCurrentPerson(array $options = []): ?Person
+    {
+        if ($this->currentPerson === false
+            || ($this->currentPerson !== null
+                && false === LocalDataEventDispatcher::areRequestedLocalDataAttributesIdentical(
+                    $this->currentPerson, Options::getLocalDataAttributes($options)))) {
+            // currentPerson not initialized yet (=== false) or requested local data attributes have changed
+            if (null === ($currentPersonIdentifier = $this->getCurrentPersonIdentifierInternal())) {
+                // no user identifier available, so we can't fetch a person
+                $this->currentPerson = null;
+            } else {
+                if ($currentCachedPerson = $this->currentResultCachedPersons[$currentPersonIdentifier] ?? null) {
+                    dump('creating current person from cached person of current result set');
+                    // the current person is part of the current result set (most likely because getCurrentPerson was called before)
+                    // -> create person with requested local data attributes from it
+                    $this->eventDispatcher->onNewOperation($options);
+                    $this->currentPerson = $this->postProcessPerson(
+                        self::createPersonAndExtraDataFromCachedPerson($currentCachedPerson, $options),
+                        $options
+                    );
+                } else {
+                    try {
+                        dump('creating new current person from DB');
+                        // probably the first request for current person
+                        // -> create person with requested local data attributes from DB cached person
+                        $this->currentPerson = $this->getPerson($currentPersonIdentifier, $options);
+                    } catch (ApiError $apiError) {
+                        if ($apiError->getStatusCode() === Response::HTTP_NOT_FOUND) {
+                            $this->currentPerson = null;
+                        } else {
+                            throw $apiError;
+                        }
+                    }
+                }
+            }
+        } else {
+            dump('re-using current person');
         }
 
         return $this->currentPerson;
@@ -393,7 +448,7 @@ class PersonProvider extends AbstractAuthorizationService implements PersonProvi
      */
     public function getCurrentResultPersonIdentifiers(): array
     {
-        return $this->currentResultPersonUids;
+        return array_keys($this->currentResultCachedPersons);
     }
 
     /**
@@ -407,13 +462,16 @@ class PersonProvider extends AbstractAuthorizationService implements PersonProvi
 
             try {
                 $currentPersonIndex = 0;
-                while ($currentPersonIndex < count($this->currentResultPersonUids)) {
+                while ($currentPersonIndex < count($this->currentResultCachedPersons)) {
                     $resourcePage = $this->getPersonClaimsApi()->getPersonClaimsPageCursorBased(
                         queryParameters: [
-                            PersonClaimsApi::PERSON_UID_QUERY_PARAMETER_NAME => array_slice(
-                                $this->currentResultPersonUids,
-                                $currentPersonIndex,
-                                self::MAX_NUM_PERSON_UIDS_PER_REQUEST),
+                            PersonClaimsApi::PERSON_UID_QUERY_PARAMETER_NAME => array_keys(
+                                array_slice(
+                                    $this->currentResultCachedPersons,
+                                    $currentPersonIndex,
+                                    self::MAX_NUM_PERSON_UIDS_PER_REQUEST,
+                                    true)
+                            ),
                         ],
                         claims: self::ALL_CLAIMS,
                         maxNumItems: self::MAX_NUM_PERSON_UIDS_PER_REQUEST);
@@ -437,13 +495,16 @@ class PersonProvider extends AbstractAuthorizationService implements PersonProvi
 
             try {
                 $currentPersonIndex = 0;
-                while ($currentPersonIndex < count($this->currentResultPersonUids)) {
+                while ($currentPersonIndex < count($this->currentResultCachedPersons)) {
                     foreach ($this->getUsersFromCOApi(
                         queryParameters: [
-                            UserApi::PERSON_UID_QUERY_PARAMETER_NAME => array_slice(
-                                $this->currentResultPersonUids,
-                                $currentPersonIndex,
-                                self::MAX_NUM_PERSON_UIDS_PER_REQUEST),
+                            UserApi::PERSON_UID_QUERY_PARAMETER_NAME => array_keys(
+                                array_slice(
+                                    $this->currentResultCachedPersons,
+                                    $currentPersonIndex,
+                                    self::MAX_NUM_PERSON_UIDS_PER_REQUEST,
+                                    true)
+                            ),
                         ])->getResources() as $userResource) {
                         $this->usersRequestCache[$userResource->getPersonUid()] = $userResource;
                     }
@@ -533,6 +594,37 @@ class PersonProvider extends AbstractAuthorizationService implements PersonProvi
         return $userCached;
     }
 
+    public function isCurrentUserAnEmployee(): ?bool
+    {
+        return ($personGroups = $this->getCurrentCachedPerson()?->getPersonGroups()) ?
+            CachedPerson::testIsEmployee($personGroups) : null;
+    }
+
+    public function isCurrentUserAStudent(): ?bool
+    {
+        return ($personGroups = $this->getCurrentCachedPerson()?->getPersonGroups()) ?
+            CachedPerson::testIsStudent($personGroups) : null;
+    }
+
+    public function isCurrentUserAnAlumni(): ?bool
+    {
+        return ($personGroups = $this->getCurrentCachedPerson()?->getPersonGroups()) ?
+            CachedPerson::testIsAlumni($personGroups) : null;
+    }
+
+    private function getCurrentCachedPerson(): ?CachedPerson
+    {
+        $currentCachedPerson = null;
+        if ($currentPersonIdentifier = $this->getCurrentPersonIdentifierInternal()) {
+            if (null === ($currentCachedPerson = $this->currentResultCachedPersons[$currentPersonIdentifier] ?? null)) {
+                $currentCachedPerson = $this->entityManager->getRepository(CachedPerson::class)
+                    ->find($currentPersonIdentifier);
+            }
+        }
+
+        return $currentCachedPerson;
+    }
+
     private function getPersonClaimsApi(): PersonClaimsApi
     {
         if ($this->personClaimsApi === null) {
@@ -605,8 +697,10 @@ class PersonProvider extends AbstractAuthorizationService implements PersonProvi
                 ->setMaxResults($maxNumItems);
 
             $personAndExtraDataPage = [];
+            $this->currentResultCachedPersons = [];
             /** @var CachedPerson $cachedPerson */
             foreach ($paginator as $cachedPerson) {
+                $this->currentResultCachedPersons[$cachedPerson->getUid()] = $cachedPerson;
                 $personAndExtraDataPage[] = self::createPersonAndExtraDataFromCachedPerson($cachedPerson, $options);
             }
 
@@ -625,10 +719,8 @@ class PersonProvider extends AbstractAuthorizationService implements PersonProvi
             Pagination::getFirstItemIndex($currentPageNumber, $maxNumItemsPerPage),
             $maxNumItemsPerPage, $filter, $options);
 
-        $this->currentResultPersonUids = array_map(
-            fn (PersonAndExtraData $personAndExtraData) => $personAndExtraData->getPerson()->getIdentifier(),
-            $personAndExtraDataPage);
-
+        // NOTE: post-processing is done after all persons of been collected, so that API requests for additional data (e.g. person claims)
+        // can be optimized by caching results for the whole page instead of doing individual requests for each person during post-processing
         return array_map(
             fn (PersonAndExtraData $personAndExtraData) => $this->postProcessPerson($personAndExtraData, $options),
             $personAndExtraDataPage

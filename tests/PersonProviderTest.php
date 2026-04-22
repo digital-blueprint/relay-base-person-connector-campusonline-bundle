@@ -105,7 +105,7 @@ class PersonProviderTest extends ApiTestCase
         $this->assertNull($currentPerson2->getLocalData());
         $this->assertSame($currentPerson1, $currentPerson2);
 
-        // same request:
+        // same request, but with local data requested
         $options = [];
         Options::requestLocalDataAttributes($options, [self::EMAIL_ATTRIBUTE]);
         $currentPerson3 = $this->personProvider->getCurrentPerson($options);
@@ -113,6 +113,49 @@ class PersonProviderTest extends ApiTestCase
         $this->assertCount(1, $currentPerson3->getLocalData());
         $this->assertSame('max.mustermann@someuni.at', $currentPerson3->getLocalData()[self::EMAIL_ATTRIBUTE]);
         $this->assertNotSame($currentPerson1, $currentPerson3);
+
+        // same request, but with different local data requested
+        $this->mockPersonClaimsApiResponse(); // getting employee address should trigger a new api request
+        $options = [];
+        Options::requestLocalDataAttributes($options, [self::EMPLOYEE_POSTAL_ADDRESS_ATTRIBUTE]);
+        $currentPerson4 = $this->personProvider->getCurrentPerson($options);
+        $this->assertCount(1, $currentPerson4->getLocalData());
+        $address = $currentPerson4->getLocalData()[self::EMPLOYEE_POSTAL_ADDRESS_ATTRIBUTE];
+        $this->assertEquals('Graz', $address['city']);
+        $this->assertEquals('AT', $address['country']);
+        $this->assertEquals('8010', $address['postalCode']);
+        $this->assertEquals('Street 123', $address['street']);
+        $this->assertEquals('PA', $address['addressTypeKey']);
+        $this->assertNotSame($currentPerson1, $currentPerson4);
+    }
+
+    public function testGetCurrentPersonWithLocalData(): void
+    {
+        $this->mockPersonClaimsApiResponse(); // getting employee address should trigger a new api request
+
+        $options = [];
+        Options::requestLocalDataAttributes($options, [self::EMAIL_ATTRIBUTE, self::EMPLOYEE_POSTAL_ADDRESS_ATTRIBUTE]);
+        $currentPerson1 = $this->personProvider->getCurrentPerson($options);
+        $this->assertCount(2, $currentPerson1->getLocalData());
+        $this->assertSame('max.mustermann@someuni.at', $currentPerson1->getLocalData()[self::EMAIL_ATTRIBUTE]);
+
+        $address = $currentPerson1->getLocalData()[self::EMPLOYEE_POSTAL_ADDRESS_ATTRIBUTE];
+        $this->assertEquals('Graz', $address['city']);
+        $this->assertEquals('AT', $address['country']);
+        $this->assertEquals('8010', $address['postalCode']);
+        $this->assertEquals('Street 123', $address['street']);
+        $this->assertEquals('PA', $address['addressTypeKey']);
+
+        // same local data attributes -> same instance should be returned and no new api request should be made
+        $currentPerson2 = $this->personProvider->getCurrentPerson($options);
+        $this->assertCount(2, $currentPerson2->getLocalData());
+        $this->assertSame($currentPerson1, $currentPerson2);
+    }
+
+    public function testGetCurrentPersonNotFound(): void
+    {
+        $this->login('non-existing-user');
+        $this->assertNull($this->personProvider->getCurrentPerson());
     }
 
     public function testGetPerson(): void
@@ -286,6 +329,39 @@ class PersonProviderTest extends ApiTestCase
         $this->assertSame(self::TEST_USER_IDENTIFIER, $user->getPersonUid());
         $this->assertSame('max.mustermann@someuni.at', $user->getEmail(0));
         $this->assertSame('maxm', $user->getUsername(0));
+    }
+
+    public function testIsCurrentUserAnEmployee(): void
+    {
+        $this->assertTrue($this->personProvider->isCurrentUserAnEmployee());
+    }
+
+    public function testIsCurrentUserAnEmployeeUndefined(): void
+    {
+        $this->login('non-existing-user');
+        $this->assertNull($this->personProvider->isCurrentUserAnEmployee());
+    }
+
+    public function testIsCurrentUserAStudent(): void
+    {
+        $this->assertFalse($this->personProvider->isCurrentUserAStudent());
+    }
+
+    public function testIsCurrentUserAStudentUndefined(): void
+    {
+        $this->login('non-existing-user');
+        $this->assertNull($this->personProvider->isCurrentUserAStudent());
+    }
+
+    public function testIsCurrentUserAnAlumni(): void
+    {
+        $this->assertFalse($this->personProvider->isCurrentUserAnAlumni());
+    }
+
+    public function testIsCurrentUserAnAlumniUndefined(): void
+    {
+        $this->login('non-existing-user');
+        $this->assertNull($this->personProvider->isCurrentUserAnAlumni());
     }
 
     private function mockResponsesForPersonCacheRecreation(): void

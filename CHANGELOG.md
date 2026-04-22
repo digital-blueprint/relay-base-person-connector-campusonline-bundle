@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Improve caching of current user
+- Add new methods isCurrentUserAnEmployee/isCurrentUserAStudent/isCurrentUserAnAlumni
+
 ## v0.1.9
 
 - Add employeeFaxNumber local data source attribute
