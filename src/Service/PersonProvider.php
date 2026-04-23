@@ -104,17 +104,17 @@ class PersonProvider extends AbstractAuthorizationService implements PersonProvi
     /**
      * @var array<string, PersonClaimsResource>|null
      */
-    private ?array $personClaimsRequestCache = null;
+    private ?array $personClaimsResourcesRequestCache = null;
 
     /**
      * @var array<string, UserResource>|null
      */
-    private ?array $usersRequestCache = null;
+    private ?array $userResourcesRequestCache = null;
 
     /**
      * @var array<string, CachedPerson>
      */
-    private array $currentResultCachedPersons = [];
+    private array $cachedPersonsRequestCache = [];
 
     public function __construct(
         private readonly EntityManagerInterface $entityManager,
@@ -172,9 +172,9 @@ class PersonProvider extends AbstractAuthorizationService implements PersonProvi
         $this->connection = null;
         $this->personClaimsApi = null;
         $this->userApi = null;
-        $this->currentResultCachedPersons = [];
-        $this->personClaimsRequestCache = null;
-        $this->usersRequestCache = null;
+        $this->cachedPersonsRequestCache = [];
+        $this->personClaimsResourcesRequestCache = null;
+        $this->userResourcesRequestCache = null;
     }
 
     /**
@@ -293,48 +293,6 @@ class PersonProvider extends AbstractAuthorizationService implements PersonProvi
         return $this->currentPerson;
     }
 
-    public function _getCurrentPerson(array $options = []): ?Person
-    {
-        if ($this->currentPerson === false
-            || ($this->currentPerson !== null
-                && false === LocalDataEventDispatcher::areRequestedLocalDataAttributesIdentical(
-                    $this->currentPerson, Options::getLocalDataAttributes($options)))) {
-            // currentPerson not initialized yet (=== false) or requested local data attributes have changed
-            if (null === ($currentPersonIdentifier = $this->getCurrentPersonIdentifierInternal())) {
-                // no user identifier available, so we can't fetch a person
-                $this->currentPerson = null;
-            } else {
-                if ($currentCachedPerson = $this->currentResultCachedPersons[$currentPersonIdentifier] ?? null) {
-                    dump('creating current person from cached person of current result set');
-                    // the current person is part of the current result set (most likely because getCurrentPerson was called before)
-                    // -> create person with requested local data attributes from it
-                    $this->eventDispatcher->onNewOperation($options);
-                    $this->currentPerson = $this->postProcessPerson(
-                        self::createPersonAndExtraDataFromCachedPerson($currentCachedPerson, $options),
-                        $options
-                    );
-                } else {
-                    try {
-                        dump('creating new current person from DB');
-                        // probably the first request for current person
-                        // -> create person with requested local data attributes from DB cached person
-                        $this->currentPerson = $this->getPerson($currentPersonIdentifier, $options);
-                    } catch (ApiError $apiError) {
-                        if ($apiError->getStatusCode() === Response::HTTP_NOT_FOUND) {
-                            $this->currentPerson = null;
-                        } else {
-                            throw $apiError;
-                        }
-                    }
-                }
-            }
-        } else {
-            dump('re-using current person');
-        }
-
-        return $this->currentPerson;
-    }
-
     public function getCurrentPersonIdentifier(): ?string
     {
         return $this->getCurrentPersonIdentifierInternal();
@@ -448,65 +406,27 @@ class PersonProvider extends AbstractAuthorizationService implements PersonProvi
      */
     public function getCurrentResultPersonIdentifiers(): array
     {
-        return array_keys($this->currentResultCachedPersons);
+        return array_keys($this->cachedPersonsRequestCache);
     }
 
-    /**
-     * Gets all persons of the current result set from the API and caches them locally, so that not every person
-     * has to be requested individually on setting local data attributes.
-     */
-    public function requestCacheCurrentResultPersons(): void
+    private function getRequestCachedUserResources(): array
     {
-        if ($this->personClaimsRequestCache === null) {
-            $this->personClaimsRequestCache = [];
-
+        if ($this->userResourcesRequestCache === null) {
+            $this->userResourcesRequestCache = [];
             try {
                 $currentPersonIndex = 0;
-                while ($currentPersonIndex < count($this->currentResultCachedPersons)) {
-                    $resourcePage = $this->getPersonClaimsApi()->getPersonClaimsPageCursorBased(
-                        queryParameters: [
-                            PersonClaimsApi::PERSON_UID_QUERY_PARAMETER_NAME => array_keys(
-                                array_slice(
-                                    $this->currentResultCachedPersons,
-                                    $currentPersonIndex,
-                                    self::MAX_NUM_PERSON_UIDS_PER_REQUEST,
-                                    true)
-                            ),
-                        ],
-                        claims: self::ALL_CLAIMS,
-                        maxNumItems: self::MAX_NUM_PERSON_UIDS_PER_REQUEST);
-
-                    /** @var PersonClaimsResource $personClaimsResource */
-                    foreach ($resourcePage->getResources() as $personClaimsResource) {
-                        $this->personClaimsRequestCache[$personClaimsResource->getUid()] = $personClaimsResource;
-                    }
-                    $currentPersonIndex += self::MAX_NUM_PERSON_UIDS_PER_REQUEST;
-                }
-            } catch (\Throwable $throwable) {
-                throw $this->dispatchException($throwable, 'failed to get persons form CO person claims API');
-            }
-        }
-    }
-
-    public function requestCacheCurrentResultUsers(): void
-    {
-        if ($this->usersRequestCache === null) {
-            $this->usersRequestCache = [];
-
-            try {
-                $currentPersonIndex = 0;
-                while ($currentPersonIndex < count($this->currentResultCachedPersons)) {
+                while ($currentPersonIndex < count($this->cachedPersonsRequestCache)) {
                     foreach ($this->getUsersFromCOApi(
                         queryParameters: [
                             UserApi::PERSON_UID_QUERY_PARAMETER_NAME => array_keys(
                                 array_slice(
-                                    $this->currentResultCachedPersons,
+                                    $this->cachedPersonsRequestCache,
                                     $currentPersonIndex,
                                     self::MAX_NUM_PERSON_UIDS_PER_REQUEST,
                                     true)
                             ),
                         ])->getResources() as $userResource) {
-                        $this->usersRequestCache[$userResource->getPersonUid()] = $userResource;
+                        $this->userResourcesRequestCache[$userResource->getPersonUid()] = $userResource;
                     }
                     $currentPersonIndex += self::MAX_NUM_PERSON_UIDS_PER_REQUEST;
                 }
@@ -514,6 +434,8 @@ class PersonProvider extends AbstractAuthorizationService implements PersonProvi
                 throw $this->dispatchException($throwable, 'failed to get users form CO Users API');
             }
         }
+
+        return $this->userResourcesRequestCache;
     }
 
     /**
@@ -538,7 +460,7 @@ class PersonProvider extends AbstractAuthorizationService implements PersonProvi
     public function getEmployeeAddress(string $personIdentifier, string $employeeAddressTypeAbbreviation): ?array
     {
         $address = null;
-        $personClaims = $this->getPersonFromApiCached($personIdentifier);
+        $personClaims = $this->getPersonClaimsResourceFromApiCached($personIdentifier);
         for ($addressIndex = 0; $addressIndex < $personClaims->getNumAddresses(); ++$addressIndex) {
             if ($personClaims->getEmployeeAddressTypeAbbreviation($addressIndex) === $employeeAddressTypeAbbreviation) {
                 $address = Tools::createAddressArray(
@@ -565,27 +487,27 @@ class PersonProvider extends AbstractAuthorizationService implements PersonProvi
         return $address;
     }
 
-    public function getPersonFromApiCached(string $personIdentifier): PersonClaimsResource
+    public function getPersonClaimsResourceFromApiCached(string $personIdentifier): PersonClaimsResource
     {
-        if (($personClaimsCached = $this->personClaimsRequestCache[$personIdentifier] ?? null) === null) {
+        if (null === ($personClaimsCached = $this->getRequestCachedPersonClaimsResources()[$personIdentifier] ?? null)) {
             try {
                 $personClaimsCached = $this->getPersonClaimsApi()->getPersonClaimsByPersonUid(
                     $personIdentifier, self::ALL_CLAIMS);
+                $this->personClaimsResourcesRequestCache[$personIdentifier] = $personClaimsCached;
             } catch (\Throwable $throwable) {
                 throw $this->dispatchException($throwable, 'failed to get person from CO person claims API');
             }
-            $this->personClaimsRequestCache[$personIdentifier] = $personClaimsCached;
         }
 
         return $personClaimsCached;
     }
 
-    public function getUserFromApiCached(string $personIdentifier): UserResource
+    public function getUserResourceFromApiCached(string $personIdentifier): UserResource
     {
-        if (($userCached = $this->usersRequestCache[$personIdentifier] ?? null) === null) {
+        if (null === ($userCached = $this->getRequestCachedUserResources()[$personIdentifier] ?? null)) {
             try {
                 $userCached = $this->getUserApi()->getUserByPersonUid($personIdentifier);
-                $this->usersRequestCache[$personIdentifier] = $userCached;
+                $this->userResourcesRequestCache[$personIdentifier] = $userCached;
             } catch (\Throwable $throwable) {
                 throw $this->dispatchException($throwable, 'failed to get user from CO Users API');
             }
@@ -612,14 +534,55 @@ class PersonProvider extends AbstractAuthorizationService implements PersonProvi
             CachedPerson::testIsAlumni($personGroups) : null;
     }
 
+    /**
+     * Gets all persons of the current result set from the API and caches them locally, so that not every person
+     * has to be requested individually on setting local data attributes.
+     */
+    private function getRequestCachedPersonClaimsResources(): array
+    {
+        if ($this->personClaimsResourcesRequestCache === null) {
+            $this->personClaimsResourcesRequestCache = [];
+
+            try {
+                $currentPersonIndex = 0;
+                while ($currentPersonIndex < count($this->cachedPersonsRequestCache)) {
+                    $resourcePage = $this->getPersonClaimsApi()->getPersonClaimsPageCursorBased(
+                        queryParameters: [
+                            PersonClaimsApi::PERSON_UID_QUERY_PARAMETER_NAME => array_keys(
+                                array_slice(
+                                    $this->cachedPersonsRequestCache,
+                                    $currentPersonIndex,
+                                    self::MAX_NUM_PERSON_UIDS_PER_REQUEST,
+                                    true)
+                            ),
+                        ],
+                        claims: self::ALL_CLAIMS,
+                        maxNumItems: self::MAX_NUM_PERSON_UIDS_PER_REQUEST);
+
+                    /** @var PersonClaimsResource $personClaimsResource */
+                    foreach ($resourcePage->getResources() as $personClaimsResource) {
+                        $this->personClaimsResourcesRequestCache[$personClaimsResource->getUid()] = $personClaimsResource;
+                    }
+                    $currentPersonIndex += self::MAX_NUM_PERSON_UIDS_PER_REQUEST;
+                }
+            } catch (\Throwable $throwable) {
+                throw $this->dispatchException($throwable, 'failed to get persons form CO person claims API');
+            }
+        }
+
+        return $this->personClaimsResourcesRequestCache;
+    }
+
     private function getCurrentCachedPerson(): ?CachedPerson
     {
         $currentCachedPerson = null;
         if ($currentPersonIdentifier = $this->getCurrentPersonIdentifierInternal()) {
-            if (null === ($currentCachedPerson = $this->currentResultCachedPersons[$currentPersonIdentifier] ?? null)) {
-                $currentCachedPerson = $this->entityManager->getRepository(CachedPerson::class)
-                    ->find($currentPersonIdentifier);
+            if (false === array_key_exists($currentPersonIdentifier, $this->cachedPersonsRequestCache)) {
+                $this->cachedPersonsRequestCache[$currentPersonIdentifier] =
+                    $this->entityManager->getRepository(CachedPerson::class)
+                        ->find($currentPersonIdentifier);
             }
+            $currentCachedPerson = $this->cachedPersonsRequestCache[$currentPersonIdentifier];
         }
 
         return $currentCachedPerson;
@@ -697,10 +660,9 @@ class PersonProvider extends AbstractAuthorizationService implements PersonProvi
                 ->setMaxResults($maxNumItems);
 
             $personAndExtraDataPage = [];
-            $this->currentResultCachedPersons = [];
             /** @var CachedPerson $cachedPerson */
             foreach ($paginator as $cachedPerson) {
-                $this->currentResultCachedPersons[$cachedPerson->getUid()] = $cachedPerson;
+                $this->cachedPersonsRequestCache[$cachedPerson->getUid()] = $cachedPerson;
                 $personAndExtraDataPage[] = self::createPersonAndExtraDataFromCachedPerson($cachedPerson, $options);
             }
 

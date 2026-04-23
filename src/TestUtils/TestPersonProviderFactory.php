@@ -10,6 +10,7 @@ use Dbp\Relay\BasePersonConnectorCampusonlineBundle\Entity\CachedPerson;
 use Dbp\Relay\BasePersonConnectorCampusonlineBundle\Entity\CachedPersonStaging;
 use Dbp\Relay\BasePersonConnectorCampusonlineBundle\EventSubscriber\PersonEventSubscriber;
 use Dbp\Relay\BasePersonConnectorCampusonlineBundle\Service\PersonProvider;
+use Dbp\Relay\CoreBundle\TestUtils\TestAuthorizationService;
 use Dbp\Relay\CoreBundle\TestUtils\TestEntityManager;
 use Doctrine\ORM\EntityManagerInterface;
 use GuzzleHttp\Handler\MockHandler;
@@ -81,8 +82,18 @@ class TestPersonProviderFactory
         }
 
         self::recreatePersonCache($personProvider, $entityManager);
+        self::login($personProvider);
 
         return $personProvider;
+    }
+
+    public static function login(PersonProvider $personProvider,
+        ?string $currentUserIdentifier = TestAuthorizationService::TEST_USER_IDENTIFIER,
+        array $currentUserAttributes = []): void
+    {
+        TestAuthorizationService::setUp($personProvider,
+            currentUserIdentifier: $currentUserIdentifier,
+            currentUserAttributes: $currentUserAttributes);
     }
 
     public static function mockPersonClaimsApiResponse(PersonProvider $personProvider): void

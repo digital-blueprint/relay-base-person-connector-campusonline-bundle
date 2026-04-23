@@ -31,7 +31,8 @@ class PersonProviderTest extends ApiTestCase
     {
         parent::setUp();
 
-        $this->personProvider = TestPersonProviderFactory::createTestPersonProvider(self::bootKernel()->getContainer());
+        $this->personProvider = TestPersonProviderFactory::createTestPersonProvider(
+            self::bootKernel()->getContainer());
         $this->login();
     }
 
@@ -342,7 +343,7 @@ class PersonProviderTest extends ApiTestCase
     {
         TestPersonProviderFactory::mockUserApiResponse($this->personProvider);
 
-        $user = $this->personProvider->getUserFromApiCached(self::STAFF_USER_IDENTIFIER);
+        $user = $this->personProvider->getUserResourceFromApiCached(self::STAFF_USER_IDENTIFIER);
         $this->assertSame(self::STAFF_USER_IDENTIFIER, $user->getPersonUid());
         $this->assertSame('eleanora.quill@someuni.example', $user->getEmail(0));
         $this->assertSame('maxm', $user->getUsername(0));
@@ -353,7 +354,7 @@ class PersonProviderTest extends ApiTestCase
         TestPersonProviderFactory::mockEmptyApiResponse($this->personProvider);
 
         try {
-            $this->personProvider->getUserFromApiCached('foo');
+            $this->personProvider->getUserResourceFromApiCached('foo');
             $this->fail('expected ApiError not thrown');
         } catch (ApiError $apiError) {
             $this->assertSame(Response::HTTP_NOT_FOUND, $apiError->getStatusCode());
@@ -365,10 +366,9 @@ class PersonProviderTest extends ApiTestCase
         $this->personProvider->getPerson(self::STAFF_USER_IDENTIFIER); // caches the person ids of current request result
 
         TestPersonProviderFactory::mockUserApiResponse($this->personProvider);
-        $this->personProvider->requestCacheCurrentResultUsers();
 
         // NOTE: no more requests must be made
-        $user = $this->personProvider->getUserFromApiCached(self::STAFF_USER_IDENTIFIER);
+        $user = $this->personProvider->getUserResourceFromApiCached(self::STAFF_USER_IDENTIFIER);
         $this->assertSame(self::STAFF_USER_IDENTIFIER, $user->getPersonUid());
         $this->assertSame('eleanora.quill@someuni.example', $user->getEmail(0));
         $this->assertSame('maxm', $user->getUsername(0));
