@@ -6,13 +6,41 @@
           "accountStatusKey": "OK",
           "accountTypeKey": "STAFF",
           "accountUid": "account-123",
-          "email": "max.mustermann@someuni.at",
+          "email": "eleanora.quill@someuni.example",
           "externalIdentityId": "external-identity-123",
-          "personUid": "019ce14a-607b-7220-8a50-21a4dc9fdaf8",
+          "personUid": "staff-id",
           "username": "maxm"
         }
       ],
-      "personUid": "019ce14a-607b-7220-8a50-21a4dc9fdaf8"
+      "personUid": "staff-id"
+    },
+    {
+      "accounts": [
+        {
+          "accountStatusKey": "OK",
+          "accountTypeKey": "STUDENT",
+          "accountUid": "account-456",
+          "email": "luna.perez@someuni.edu",
+          "externalIdentityId": "external-identity-456",
+          "personUid": "student-id",
+          "username": "maxs"
+        }
+      ],
+      "personUid": "student-id"
+    },
+    {
+      "accounts": [
+        {
+          "accountStatusKey": "OK",
+          "accountTypeKey": "A",
+          "accountUid": "account-789",
+          "email": "aksel.ostergaard@alumni.someuni.at",
+          "externalIdentityId": "external-identity-789",
+          "personUid": "alumnus-id",
+          "username": "maxa"
+        }
+      ],
+      "personUid": "alumnus-id"
     }
   ],
   "limit": 1000

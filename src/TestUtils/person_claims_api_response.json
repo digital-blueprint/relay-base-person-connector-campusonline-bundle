@@ -1,42 +1,177 @@
 {
   "items": [
     {
-      "givenName": "Max",
-      "surname": "Mustermann",
-      "titlePrefix": "Mat. Doctor rer.nat.",
-      "titleSuffix": "mag. ing. arch.",
-      "uid": "019ce14a-607b-7220-8a50-21a4dc9fdaf8",
+      "givenName": "Eleanora",
+      "surname": "Quill-Weatherby",
+      "titlePrefix": "Prof. Dr.",
+      "titleSuffix": "PhD",
+      "uid": "staff-id",
       "addresses": [
         {
-          "city": "Graz",
-          "country": "AT",
+          "city": "Brno",
+          "country": "CZ",
           "employeeAddressTypeAbbreviation": "PA",
           "employeeAddressTypeName": {
             "value": {
               "de": "Wohnsitz",
               "en": "Residence",
+              "it": "Residenza",
+              "fr": "Domicile"
+            }
+          },
+          "postalCode": "60200",
+          "street": "Mosaic Lane 42B"
+        },
+        {
+          "city": "Salzburg",
+          "country": "AT",
+          "employeeAddressTypeAbbreviation": "OFF",
+          "employeeAddressTypeName": {
+            "value": {
+              "de": "Dienstadresse",
+              "en": "Office",
               "it": null,
               "fr": null
             }
           },
-          "postalCode": "8010",
-          "street": "Street 123"
+          "postalCode": "5020",
+          "street": "Hohenplatz 3, Institut für Phantastik"
         }
       ],
-      "businessCardUrlEmployee": "https://co.someuni.at/visitenkarte.show_vcard?pPersonenGruppe=3&pPersonenId=019ce14a-607b-7220-8a50-21a4dc9fdaf8",
-      "dateOfBirth": "1970-01-01",
-      "email": "max.mustermann@someuni.at",
-      "emailEmployee": "max.mustermann@someuni.at",
-      "employeeInternalId": 67,
-      "extpersInternalId": 123,
+      "businessCardUrlEmployee": "https://co.someuni.at/visitenkarte.show_vcard?pPersonenGruppe=3&pPersonenId=staff-id",
+      "dateOfBirth": "1978-10-12",
+      "email": "eleanora.quill@someuni.example",
+      "emailEmployee": "e.quill@someuni.example",
+      "employeeInternalId": 781,
+      "extpersInternalId": 9901,
+      "genderKey": "F",
+      "internalPhoneNumbersEmployee": [
+        "+420 5 1234 5678",
+        "+43 662 77 99 11"
+      ],
+      "personGroups": [
+        "EMPLOYEE",
+        "STUDENT"
+      ],
+      "personInternalId": 781,
+      "personTypeKey": "R"
+    },
+    {
+      "givenName": "Luna",
+      "surname": "Pérez-Altamirano",
+      "titlePrefix": null,
+      "titleSuffix": null,
+      "uid": "student-id",
+      "addresses": [
+        {
+          "city": "Graz",
+          "country": "AT",
+          "employeeAddressTypeAbbreviation": "STU",
+          "employeeAddressTypeName": {
+            "value": {
+              "de": "Studierendenwohnheim",
+              "en": "Student Residence",
+              "it": null,
+              "fr": null
+            }
+          },
+          "postalCode": "8020",
+          "street": "Kleine Bootgasse 14, Top 3"
+        }
+      ],
+      "businessCardUrlEmployee": null,
+      "dateOfBirth": "2002-11-03",
+      "email": "luna.perez@someuni.edu",
+      "emailEmployee": null,
+      "employeeInternalId": null,
+      "extpersInternalId": null,
+      "genderKey": "F",
+      "internalPhoneNumbersEmployee": [
+        "+43 660 123-9876"
+      ],
+      "personGroups": [
+        "STUDENT"
+      ],
+      "personInternalId": 322,
+      "personTypeKey": "S"
+    },
+    {
+      "givenName": "Aksel",
+      "surname": "Østergaard",
+      "titlePrefix": null,
+      "titleSuffix": null,
+      "uid": "alumnus-id",
+      "addresses": [
+        {
+          "city": "Copenhagen",
+          "country": "DK",
+          "employeeAddressTypeAbbreviation": "ALU",
+          "employeeAddressTypeName": {
+            "value": {
+              "de": "Alumnenadresse",
+              "en": "Alumnus Address",
+              "it": null,
+              "fr": null
+            }
+          },
+          "postalCode": "1050",
+          "street": "Øster Allé 21"
+        }
+      ],
+      "businessCardUrlEmployee": null,
+      "dateOfBirth": "1988-07-19",
+      "email": "aksel.ostergaard@alumni.someuni.at",
+      "emailEmployee": null,
+      "employeeInternalId": null,
+      "extpersInternalId": null,
       "genderKey": "M",
       "internalPhoneNumbersEmployee": [],
       "personGroups": [
-        "EMPLOYEE",
-        "EXTPERS"
+        "EXTPERS",
+        "STUDENT"
       ],
-      "personInternalId": 321,
-      "personTypeKey": "R"
+      "personInternalId": 323,
+      "personTypeKey": "A"
+    },
+    {
+      "givenName": "Marin",
+      "surname": "Vale",
+      "titlePrefix": null,
+      "titleSuffix": null,
+      "uid": "marin-vale-id",
+      "addresses": [
+        {
+          "city": "Reykjavík",
+          "country": "IS",
+          "employeeAddressTypeAbbreviation": "GLO",
+          "employeeAddressTypeName": {
+            "value": {
+              "de": "Gastadresse",
+              "en": "Guest Address",
+              "it": null,
+              "fr": null
+            }
+          },
+          "postalCode": "101",
+          "street": "Aurora Boulevard 77"
+        }
+      ],
+      "businessCardUrlEmployee": null,
+      "dateOfBirth": "1995-12-01",
+      "email": "marin.vale@nomad.example",
+      "emailEmployee": null,
+      "employeeInternalId": null,
+      "extpersInternalId": null,
+      "genderKey": "F",
+      "internalPhoneNumbersEmployee": [
+        "+354 555 0101"
+      ],
+      "personGroups": [
+        "EMPLOYEE",
+        "STUDENT"
+      ],
+      "personInternalId": 900,
+      "personTypeKey": "V"
     }
   ],
   "limit": 1000
