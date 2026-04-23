@@ -30,6 +30,7 @@ class TestPersonProviderFactory
     public const EMAIL_ATTRIBUTE = 'email';
     public const EMPLOYEE_POSTAL_ADDRESS_ATTRIBUTE = 'employeePostalAddress';
     public const EMPLOYEE_WORK_ADDRESS_ATTRIBUTE = 'employeeWorkAddress';
+    public const USERNAME_ATTRIBUTE = 'username';
 
     private const CONFIG = [
         Configuration::CURRENT_PERSON_IDENTIFIER_EXPRESSION_ATTRIBUTE => Configuration::CURRENT_PERSON_IDENTIFIER_EXPRESSION_ATTRIBUTE_DEFAULT,
@@ -52,6 +53,11 @@ class TestPersonProviderFactory
             [
                 'local_data_attribute' => self::EMPLOYEE_WORK_ADDRESS_ATTRIBUTE,
                 'source_attribute' => PersonEventSubscriber::EMPLOYEE_WORK_ADDRESS_SOURCE_ATTRIBUTE,
+                'default_value' => '',
+            ],
+            [
+                'local_data_attribute' => self::USERNAME_ATTRIBUTE,
+                'source_attribute' => PersonEventSubscriber::USERNAME_SOURCE_ATTRIBUTE,
                 'default_value' => '',
             ],
         ],
