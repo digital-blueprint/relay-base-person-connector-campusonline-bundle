@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v0.1.10
+
 - Add 'username' local data source attribute
 - Add TestUtils to be able to use the PersonProvider in app tests
 - Improve caching of current user
