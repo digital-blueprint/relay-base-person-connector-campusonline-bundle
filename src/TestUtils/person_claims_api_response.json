@@ -8,8 +8,8 @@
       "uid": "staff-id",
       "addresses": [
         {
-          "city": "Brno",
-          "country": "CZ",
+          "city": "Graz",
+          "country": "AT",
           "employeeAddressTypeAbbreviation": "PA",
           "employeeAddressTypeName": {
             "value": {
@@ -19,13 +19,13 @@
               "fr": "Domicile"
             }
           },
-          "postalCode": "60200",
-          "street": "Mosaic Lane 42B"
+          "postalCode": "8010",
+          "street": "Street 123"
         },
         {
-          "city": "Salzburg",
+          "city": "Wien",
           "country": "AT",
-          "employeeAddressTypeAbbreviation": "OFF",
+          "employeeAddressTypeAbbreviation": "DO",
           "employeeAddressTypeName": {
             "value": {
               "de": "Dienstadresse",
@@ -34,8 +34,10 @@
               "fr": null
             }
           },
-          "postalCode": "5020",
-          "street": "Hohenplatz 3, Institut für Phantastik"
+          "postalCode": "1010",
+          "street": "Hohenplatz 3, Institut für Phantastik",
+          "roomUid": 44,
+          "contactOrgUid": 37
         }
       ],
       "businessCardUrlEmployee": "https://co.someuni.at/visitenkarte.show_vcard?pPersonenGruppe=3&pPersonenId=staff-id",
@@ -62,23 +64,6 @@
       "titlePrefix": null,
       "titleSuffix": null,
       "uid": "student-id",
-      "addresses": [
-        {
-          "city": "Graz",
-          "country": "AT",
-          "employeeAddressTypeAbbreviation": "STU",
-          "employeeAddressTypeName": {
-            "value": {
-              "de": "Studierendenwohnheim",
-              "en": "Student Residence",
-              "it": null,
-              "fr": null
-            }
-          },
-          "postalCode": "8020",
-          "street": "Kleine Bootgasse 14, Top 3"
-        }
-      ],
       "businessCardUrlEmployee": null,
       "dateOfBirth": "2002-11-03",
       "email": "luna.perez@someuni.edu",
@@ -105,7 +90,7 @@
         {
           "city": "Copenhagen",
           "country": "DK",
-          "employeeAddressTypeAbbreviation": "ALU",
+          "employeeAddressTypeAbbreviation": "ZW",
           "employeeAddressTypeName": {
             "value": {
               "de": "Alumnenadresse",
@@ -132,46 +117,6 @@
       ],
       "personInternalId": 323,
       "personTypeKey": "A"
-    },
-    {
-      "givenName": "Marin",
-      "surname": "Vale",
-      "titlePrefix": null,
-      "titleSuffix": null,
-      "uid": "marin-vale-id",
-      "addresses": [
-        {
-          "city": "Reykjavík",
-          "country": "IS",
-          "employeeAddressTypeAbbreviation": "GLO",
-          "employeeAddressTypeName": {
-            "value": {
-              "de": "Gastadresse",
-              "en": "Guest Address",
-              "it": null,
-              "fr": null
-            }
-          },
-          "postalCode": "101",
-          "street": "Aurora Boulevard 77"
-        }
-      ],
-      "businessCardUrlEmployee": null,
-      "dateOfBirth": "1995-12-01",
-      "email": "marin.vale@nomad.example",
-      "emailEmployee": null,
-      "employeeInternalId": null,
-      "extpersInternalId": null,
-      "genderKey": "F",
-      "internalPhoneNumbersEmployee": [
-        "+354 555 0101"
-      ],
-      "personGroups": [
-        "EMPLOYEE",
-        "STUDENT"
-      ],
-      "personInternalId": 900,
-      "personTypeKey": "V"
     }
   ],
   "limit": 1000

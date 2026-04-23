@@ -6,6 +6,7 @@ namespace Dbp\Relay\BasePersonConnectorCampusonlineBundle\Tests;
 
 use ApiPlatform\Symfony\Bundle\ApiPlatformBundle;
 use Dbp\Relay\BasePersonConnectorCampusonlineBundle\DbpRelayBasePersonConnectorCampusonlineBundle;
+use Dbp\Relay\BasePersonConnectorCampusonlineBundle\DependencyInjection\Configuration;
 use Dbp\Relay\CoreBundle\DbpRelayCoreBundle;
 use Doctrine\Bundle\DoctrineBundle\DoctrineBundle;
 use Doctrine\Bundle\MigrationsBundle\DoctrineMigrationsBundle;
@@ -52,6 +53,8 @@ class Kernel extends BaseKernel
             'annotations' => false,
         ]);
 
-        $container->extension('dbp_relay_base_person_connector_campusonline', []);
+        $container->extension('dbp_relay_base_person_connector_campusonline', [
+            Configuration::DATABASE_URL => 'sqlite:///:memory:',
+        ]);
     }
 }
