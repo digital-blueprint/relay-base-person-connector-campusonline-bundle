@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v0.1.11
+
 - Add more tests
 - Update campusonline-api: fix UserApi
 
