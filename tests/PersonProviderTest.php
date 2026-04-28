@@ -8,10 +8,8 @@ use ApiPlatform\Symfony\Bundle\Test\ApiTestCase;
 use Dbp\Relay\BasePersonBundle\Entity\Person;
 use Dbp\Relay\BasePersonConnectorCampusonlineBundle\Service\PersonProvider;
 use Dbp\Relay\BasePersonConnectorCampusonlineBundle\TestUtils\TestPersonProviderFactory;
-use Dbp\Relay\CoreBundle\Exception\ApiError;
 use Dbp\Relay\CoreBundle\Rest\Options;
 use Dbp\Relay\CoreBundle\TestUtils\TestAuthorizationService;
-use Symfony\Component\HttpFoundation\Response;
 
 /**
  * TODO: add more persons to responses for reasonable pagination, search and filter tests.
@@ -156,6 +154,22 @@ class PersonProviderTest extends ApiTestCase
         $this->assertEquals('37', $address['contactOrganizationIdentifier']);
     }
 
+    public function testGetPersonWithLocalDataNewPersonClaimsApiRequestNotFound(): void
+    {
+        // getting employee address should trigger a new person api request
+        // -> however, the person is not found anymore and thus the address cannot be retrieved
+        TestPersonProviderFactory::mockEmptyApiResponse($this->personProvider);
+
+        $options = [];
+        Options::requestLocalDataAttributes($options, [
+            self::EMAIL_ATTRIBUTE,
+            self::EMPLOYEE_POSTAL_ADDRESS_ATTRIBUTE]);
+        $person = $this->personProvider->getPerson(self::STAFF_USER_IDENTIFIER, $options);
+        $this->assertCount(2, $person->getLocalData());
+        $this->assertSame('eleanora.quill@someuni.example', $person->getLocalData()[self::EMAIL_ATTRIBUTE]);
+        $this->assertNull($person->getLocalData()[self::EMPLOYEE_POSTAL_ADDRESS_ATTRIBUTE]);
+    }
+
     public function testGetPersonWithLocalDataNewUserApiRequest(): void
     {
         // getting username should trigger a new user api request
@@ -168,6 +182,21 @@ class PersonProviderTest extends ApiTestCase
         $person = $this->personProvider->getPerson(self::STAFF_USER_IDENTIFIER, $options);
         $this->assertCount(1, $person->getLocalData());
         $this->assertSame('maxm', $person->getLocalData()[self::USERNAME_ATTRIBUTE]);
+    }
+
+    public function testGetPersonWithLocalDataNewUserApiRequestNotFound(): void
+    {
+        // getting username should trigger a new user api request
+        // however, the user is not found (anymore) and thus the username cannot be retrieved
+        TestPersonProviderFactory::mockEmptyApiResponse($this->personProvider);
+
+        $options = [];
+        Options::requestLocalDataAttributes($options, [
+            self::USERNAME_ATTRIBUTE,
+        ]);
+        $person = $this->personProvider->getPerson(self::STAFF_USER_IDENTIFIER, $options);
+        $this->assertCount(1, $person->getLocalData());
+        $this->assertNull($person->getLocalData()[self::USERNAME_ATTRIBUTE]);
     }
 
     public function testGetPersonWithLocalDataNewUserApiAndPersonClaimsApiRequest(): void
@@ -351,6 +380,51 @@ class PersonProviderTest extends ApiTestCase
         );
     }
 
+    public function testGetPersonsWithLocalDataNewPersonClaimsApiRequestNotFound(): void
+    {
+        // getting employee address should trigger a new api request
+        // however, the persons are not found anymore and thus the address cannot be retrieved
+        TestPersonProviderFactory::mockEmptyApiResponse($this->personProvider);
+
+        $options = [];
+        Options::requestLocalDataAttributes($options, [
+            self::EMAIL_ATTRIBUTE,
+            self::EMPLOYEE_POSTAL_ADDRESS_ATTRIBUTE,
+        ]);
+        $persons = $this->personProvider->getPersons(1, 10, $options);
+        $this->assertCount(3, $persons);
+        $this->assertTrue(
+            self::containsExactlyOneWhere(
+                $persons,
+                fn (Person $person) => self::STAFF_USER_IDENTIFIER === $person->getIdentifier()
+                    && 'Eleanora' === $person->getGivenName()
+                    && 'Quill-Weatherby' === $person->getFamilyName()
+                    && 'eleanora.quill@someuni.example' === $person->getLocalData()[self::EMAIL_ATTRIBUTE]
+                    && null === $person->getLocalData()[self::EMPLOYEE_POSTAL_ADDRESS_ATTRIBUTE]
+            )
+        );
+        $this->assertTrue(
+            self::containsExactlyOneWhere(
+                $persons,
+                fn (Person $person) => 'student-id' === $person->getIdentifier()
+                    && 'Luna' === $person->getGivenName()
+                    && 'Pérez-Altamirano' === $person->getFamilyName()
+                    && 'luna.perez@someuni.edu' === $person->getLocalData()[self::EMAIL_ATTRIBUTE]
+                    && null === $person->getLocalData()[self::EMPLOYEE_POSTAL_ADDRESS_ATTRIBUTE]
+            )
+        );
+        $this->assertTrue(
+            self::containsExactlyOneWhere(
+                $persons,
+                fn (Person $person) => 'alumnus-id' === $person->getIdentifier()
+                    && 'Aksel' === $person->getGivenName()
+                    && 'Østergaard' === $person->getFamilyName()
+                    && 'aksel.ostergaard@alumni.someuni.at' === $person->getLocalData()[self::EMAIL_ATTRIBUTE]
+                    && null === $person->getLocalData()[self::EMPLOYEE_POSTAL_ADDRESS_ATTRIBUTE]
+            )
+        );
+    }
+
     public function testGetPersonsWithLocalDataNewUserApiRequest(): void
     {
         // getting username should trigger a new user api request
@@ -385,6 +459,43 @@ class PersonProviderTest extends ApiTestCase
                 && 'Østergaard' === $person->getFamilyName()
                 && 1 === count($person->getLocalData())
                 && 'maxa' === $person->getLocalData()[self::USERNAME_ATTRIBUTE]
+        ));
+    }
+
+    public function testGetPersonsWithLocalDataNewUserApiRequestNotFound(): void
+    {
+        // getting username should trigger a new user api request
+        TestPersonProviderFactory::mockEmptyApiResponse($this->personProvider);
+
+        $options = [];
+        Options::requestLocalDataAttributes($options, [
+            self::USERNAME_ATTRIBUTE,
+        ]);
+        $persons = $this->personProvider->getPersons(1, 30, $options);
+        $this->assertCount(3, $persons);
+        $this->assertTrue(self::containsExactlyOneWhere(
+            $persons,
+            fn (Person $person) => self::STAFF_USER_IDENTIFIER === $person->getIdentifier()
+                && 'Eleanora' === $person->getGivenName()
+                && 'Quill-Weatherby' === $person->getFamilyName()
+                && 1 === count($person->getLocalData())
+                && null === $person->getLocalData()[self::USERNAME_ATTRIBUTE]
+        ));
+        $this->assertTrue(self::containsExactlyOneWhere(
+            $persons,
+            fn (Person $person) => 'student-id' === $person->getIdentifier()
+                && 'Luna' === $person->getGivenName()
+                && 'Pérez-Altamirano' === $person->getFamilyName()
+                && 1 === count($person->getLocalData())
+                && null === $person->getLocalData()[self::USERNAME_ATTRIBUTE]
+        ));
+        $this->assertTrue(self::containsExactlyOneWhere(
+            $persons,
+            fn (Person $person) => 'alumnus-id' === $person->getIdentifier()
+                && 'Aksel' === $person->getGivenName()
+                && 'Østergaard' === $person->getFamilyName()
+                && 1 === count($person->getLocalData())
+                && null === $person->getLocalData()[self::USERNAME_ATTRIBUTE]
         ));
     }
 
@@ -529,12 +640,9 @@ class PersonProviderTest extends ApiTestCase
     {
         TestPersonProviderFactory::mockEmptyApiResponse($this->personProvider);
 
-        try {
-            $this->personProvider->getPersonClaimsResourceFromApiCached('foo');
-            $this->fail('expected ApiError not thrown');
-        } catch (ApiError $apiError) {
-            $this->assertSame(Response::HTTP_NOT_FOUND, $apiError->getStatusCode());
-        }
+        $this->assertNull($this->personProvider->getPersonClaimsResourceFromApiCached('foo'));
+        // NOTE: no more requests must be made
+        $this->assertNull($this->personProvider->getPersonClaimsResourceFromApiCached('foo'));
     }
 
     public function testGetPersonClaimsResourceFromApiCachedAfterGetPerson(): void
@@ -593,12 +701,9 @@ class PersonProviderTest extends ApiTestCase
     {
         TestPersonProviderFactory::mockEmptyApiResponse($this->personProvider);
 
-        try {
-            $this->personProvider->getUserResourceFromApiCached('foo');
-            $this->fail('expected ApiError not thrown');
-        } catch (ApiError $apiError) {
-            $this->assertSame(Response::HTTP_NOT_FOUND, $apiError->getStatusCode());
-        }
+        $this->assertNull($this->personProvider->getUserResourceFromApiCached('foo'));
+        // NOTE: no more requests must be made
+        $this->assertNull($this->personProvider->getUserResourceFromApiCached('foo'));
     }
 
     public function testGetUserResourceFromApiCachedAfterGetPerson(): void
@@ -654,6 +759,13 @@ class PersonProviderTest extends ApiTestCase
         $this->assertEquals('PA', $address['addressTypeKey']);
     }
 
+    public function testGetEmployeePostalAddressNotFound(): void
+    {
+        TestPersonProviderFactory::mockEmptyApiResponse($this->personProvider);
+
+        $this->assertNull($this->personProvider->getEmployeePostalAddress(self::STAFF_USER_IDENTIFIER));
+    }
+
     public function testGetEmployeeWorkAddress(): void
     {
         TestPersonProviderFactory::mockPersonClaimsApiResponse($this->personProvider);
@@ -666,6 +778,13 @@ class PersonProviderTest extends ApiTestCase
         $this->assertEquals('DO', $address['addressTypeKey']);
         $this->assertEquals('44', $address['roomIdentifier']);
         $this->assertEquals('37', $address['contactOrganizationIdentifier']);
+    }
+
+    public function testGetEmployeeWorkAddressNotFound(): void
+    {
+        TestPersonProviderFactory::mockEmptyApiResponse($this->personProvider);
+
+        $this->assertNull($this->personProvider->getEmployeeWorkAddress(self::STAFF_USER_IDENTIFIER));
     }
 
     public function testIsCurrentUserAnEmployee(): void

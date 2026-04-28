@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## v0.1.12
+
+- Return null on not found for getUserResourceFromApiCached and getPersonClaimsResourceFromApiCached instead of throwing an exception
+- Also cache null values to prevent repeated requests for non-existing users/persons
+- Add more tests
+
 ## v0.1.11
 
 - Add more tests
