@@ -147,7 +147,7 @@ class PersonProvider extends AbstractAuthorizationService implements PersonProvi
 
     public function checkPersonClaimsApi(): void
     {
-        $this->getPersonClaimsApi()->getPersonClaimsPageCursorBased(
+        $this->getPersonClaimsApi()->getPersonClaimsCursorBased(
             claims: self::ALL_CLAIMS,
             maxNumItems: 1
         );
@@ -521,7 +521,7 @@ class PersonProvider extends AbstractAuthorizationService implements PersonProvi
             try {
                 $currentPersonIndex = 0;
                 while ($currentPersonIndex < count($this->cachedPersonsRequestCache)) {
-                    $resourcePage = $this->getPersonClaimsApi()->getPersonClaimsPageCursorBased(
+                    $resourcePage = $this->getPersonClaimsApi()->getPersonClaimsCursorBased(
                         queryParameters: [
                             PersonClaimsApi::PERSON_UID_QUERY_PARAMETER_NAME => array_keys(
                                 array_slice(
@@ -857,7 +857,7 @@ class PersonProvider extends AbstractAuthorizationService implements PersonProvi
             ];
 
             /** @var PersonClaimsResource $personClaimsResource */
-            foreach ($this->getPersonClaimsApi()->getPersonClaimsPageOffsetBased(
+            foreach ($this->getPersonClaimsApi()->getPersonClaimsOffsetBased(
                 queryParameters: $personClaimsQueryParameters,
                 claims: self::PERSON_CLAIMS_REQUIRED_FOR_CACHE,
                 maxNumItems: self::MAX_NUM_PERSON_UIDS_PER_REQUEST
