@@ -20,6 +20,7 @@ class PersonProviderTest extends ApiTestCase
 {
     private const STAFF_USER_IDENTIFIER = TestPersonProviderFactory::STAFF_USER_IDENTIFIER;
     private const STUDENT_USER_IDENTIFIER = TestPersonProviderFactory::STUDENT_USER_IDENTIFIER;
+    private const ALUMNUS_USER_IDENTIFIER = TestPersonProviderFactory::ALUMNUS_USER_IDENTIFIER;
 
     private const EMAIL_ATTRIBUTE = TestPersonProviderFactory::EMAIL_ATTRIBUTE;
     private const EMPLOYEE_POSTAL_ADDRESS_ATTRIBUTE = TestPersonProviderFactory::EMPLOYEE_POSTAL_ADDRESS_ATTRIBUTE;
@@ -33,8 +34,14 @@ class PersonProviderTest extends ApiTestCase
         parent::setUp();
 
         $this->personProvider = TestPersonProviderFactory::createTestPersonProvider(
-            self::bootKernel()->getContainer());
+            self::bootKernel()->getContainer()
+        );
         $this->login();
+    }
+
+    public function testGetCurrentPersonIdentifier(): void
+    {
+        $this->assertSame(self::STAFF_USER_IDENTIFIER, $this->personProvider->getCurrentPersonIdentifier());
     }
 
     public function testGetCurrentPerson(): void
@@ -118,7 +125,7 @@ class PersonProviderTest extends ApiTestCase
         $this->assertSame('eleanora.quill@someuni.example', $person->getLocalData()[self::EMAIL_ATTRIBUTE]);
     }
 
-    public function testGetPersonWithLocalDataNewPersonApiRequest(): void
+    public function testGetPersonWithLocalDataNewPersonClaimsApiRequest(): void
     {
         // getting employee address should trigger a new person api request
         TestPersonProviderFactory::mockPersonClaimsApiResponse($this->personProvider);
@@ -163,69 +170,57 @@ class PersonProviderTest extends ApiTestCase
         $this->assertSame('maxm', $person->getLocalData()[self::USERNAME_ATTRIBUTE]);
     }
 
-    public function testGetPersonsWithLocalDataNewUserApiRequest(): void
+    public function testGetPersonWithLocalDataNewUserApiAndPersonClaimsApiRequest(): void
     {
-        // getting username should trigger a new user api request
-        TestPersonProviderFactory::mockUserApiResponse($this->personProvider);
+        // getting username/address should trigger a new user/person claims api request
+        TestPersonProviderFactory::mockApiResponses($this->personProvider, [
+            new \GuzzleHttp\Psr7\Response(200, ['Content-Type' => 'application/json'], TestPersonProviderFactory::getPersonClaimsApiTestResponse()),
+            new \GuzzleHttp\Psr7\Response(200, ['Content-Type' => 'application/json'], TestPersonProviderFactory::getUserApiTestResponse()),
+        ]);
 
         $options = [];
         Options::requestLocalDataAttributes($options, [
+            self::EMPLOYEE_POSTAL_ADDRESS_ATTRIBUTE,
             self::USERNAME_ATTRIBUTE,
         ]);
-        $persons = $this->personProvider->getPersons(1, 30, $options);
-        $this->assertCount(3, $persons);
-        $this->assertTrue(self::containsExactlyOneWhere($persons,
-            fn (Person $person) => self::STAFF_USER_IDENTIFIER === $person->getIdentifier()
-                && 'Eleanora' === $person->getGivenName()
-                && 'Quill-Weatherby' === $person->getFamilyName()
-                && 1 === count($person->getLocalData())
-                && 'maxm' === $person->getLocalData()[self::USERNAME_ATTRIBUTE]
-        ));
-        $this->assertTrue(self::containsExactlyOneWhere($persons,
-            fn (Person $person) => 'student-id' === $person->getIdentifier()
-                && 'Luna' === $person->getGivenName()
-                && 'Pérez-Altamirano' === $person->getFamilyName()
-                && 1 === count($person->getLocalData())
-                && 'maxs' === $person->getLocalData()[self::USERNAME_ATTRIBUTE]
-        ));
-        $this->assertTrue(self::containsExactlyOneWhere($persons,
-            fn (Person $person) => 'alumnus-id' === $person->getIdentifier()
-                && 'Aksel' === $person->getGivenName()
-                && 'Østergaard' === $person->getFamilyName()
-                && 1 === count($person->getLocalData())
-                && 'maxa' === $person->getLocalData()[self::USERNAME_ATTRIBUTE]
-        ));
+        $person = $this->personProvider->getPerson(self::STAFF_USER_IDENTIFIER, $options);
+        $this->assertCount(2, $person->getLocalData());
+        $this->assertSame('maxm', $person->getLocalData()[self::USERNAME_ATTRIBUTE]);
+        $address = $person->getLocalData()[self::EMPLOYEE_POSTAL_ADDRESS_ATTRIBUTE];
+        $this->assertEquals('Graz', $address['city']);
+        $this->assertEquals('AT', $address['country']);
+        $this->assertEquals('8010', $address['postalCode']);
+        $this->assertEquals('Street 123', $address['street']);
+        $this->assertEquals('PA', $address['addressTypeKey']);
     }
 
     public function testGetPersons(): void
     {
         $persons = $this->personProvider->getPersons(1, 10);
         $this->assertCount(3, $persons);
-        $this->assertTrue(self::containsExactlyOneWhere($persons,
+        $this->assertTrue(self::containsExactlyOneWhere(
+            $persons,
             fn (Person $person) => self::STAFF_USER_IDENTIFIER === $person->getIdentifier()
                 && 'Eleanora' === $person->getGivenName()
                 && 'Quill-Weatherby' === $person->getFamilyName()
                 && null === $person->getLocalData()
         ));
 
-        $this->assertTrue(self::containsExactlyOneWhere($persons,
+        $this->assertTrue(self::containsExactlyOneWhere(
+            $persons,
             fn (Person $person) => 'student-id' === $person->getIdentifier()
                 && 'Luna' === $person->getGivenName()
                 && 'Pérez-Altamirano' === $person->getFamilyName()
                 && null === $person->getLocalData()
         ));
 
-        $this->assertTrue(self::containsExactlyOneWhere($persons,
+        $this->assertTrue(self::containsExactlyOneWhere(
+            $persons,
             fn (Person $person) => 'alumnus-id' === $person->getIdentifier()
                 && 'Aksel' === $person->getGivenName()
                 && 'Østergaard' === $person->getFamilyName()
                 && null === $person->getLocalData()
         ));
-    }
-
-    protected static function containsExactlyOneWhere(array $results, callable $where): bool
-    {
-        return 1 === count(array_filter($results, $where));
     }
 
     public function testGetPersonsPagination(): void
@@ -238,21 +233,24 @@ class PersonProviderTest extends ApiTestCase
 
         $persons = array_merge($personPage1, $personPage2);
         $this->assertCount(3, $persons);
-        $this->assertTrue(self::containsExactlyOneWhere($persons,
+        $this->assertTrue(self::containsExactlyOneWhere(
+            $persons,
             fn (Person $person) => self::STAFF_USER_IDENTIFIER === $person->getIdentifier()
                 && 'Eleanora' === $person->getGivenName()
                 && 'Quill-Weatherby' === $person->getFamilyName()
                 && null === $person->getLocalData()
         ));
 
-        $this->assertTrue(self::containsExactlyOneWhere($persons,
+        $this->assertTrue(self::containsExactlyOneWhere(
+            $persons,
             fn (Person $person) => 'student-id' === $person->getIdentifier()
                 && 'Luna' === $person->getGivenName()
                 && 'Pérez-Altamirano' === $person->getFamilyName()
                 && null === $person->getLocalData()
         ));
 
-        $this->assertTrue(self::containsExactlyOneWhere($persons,
+        $this->assertTrue(self::containsExactlyOneWhere(
+            $persons,
             fn (Person $person) => 'alumnus-id' === $person->getIdentifier()
                 && 'Aksel' === $person->getGivenName()
                 && 'Østergaard' === $person->getFamilyName()
@@ -266,29 +264,39 @@ class PersonProviderTest extends ApiTestCase
         Options::requestLocalDataAttributes($options, [self::EMAIL_ATTRIBUTE]);
         $persons = $this->personProvider->getPersons(1, 10, $options);
         $this->assertCount(3, $persons);
-        $this->assertTrue(self::containsExactlyOneWhere($persons,
-            fn (Person $person) => self::STAFF_USER_IDENTIFIER === $person->getIdentifier()
-                && 'Eleanora' === $person->getGivenName()
-                && 'Quill-Weatherby' === $person->getFamilyName()
-                && 'eleanora.quill@someuni.example' === $person->getLocalData()[self::EMAIL_ATTRIBUTE])
+        $this->assertTrue(
+            self::containsExactlyOneWhere(
+                $persons,
+                fn (Person $person) => self::STAFF_USER_IDENTIFIER === $person->getIdentifier()
+                    && 'Eleanora' === $person->getGivenName()
+                    && 'Quill-Weatherby' === $person->getFamilyName()
+                    && 'eleanora.quill@someuni.example' === $person->getLocalData()[self::EMAIL_ATTRIBUTE]
+            )
         );
-        $this->assertTrue(self::containsExactlyOneWhere($persons,
-            fn (Person $person) => 'student-id' === $person->getIdentifier()
-                && 'Luna' === $person->getGivenName()
-                && 'Pérez-Altamirano' === $person->getFamilyName()
-                && 'luna.perez@someuni.edu' === $person->getLocalData()[self::EMAIL_ATTRIBUTE])
+        $this->assertTrue(
+            self::containsExactlyOneWhere(
+                $persons,
+                fn (Person $person) => 'student-id' === $person->getIdentifier()
+                    && 'Luna' === $person->getGivenName()
+                    && 'Pérez-Altamirano' === $person->getFamilyName()
+                    && 'luna.perez@someuni.edu' === $person->getLocalData()[self::EMAIL_ATTRIBUTE]
+            )
         );
-        $this->assertTrue(self::containsExactlyOneWhere($persons,
-            fn (Person $person) => 'alumnus-id' === $person->getIdentifier()
-                && 'Aksel' === $person->getGivenName()
-                && 'Østergaard' === $person->getFamilyName()
-            && 'aksel.ostergaard@alumni.someuni.at' === $person->getLocalData()[self::EMAIL_ATTRIBUTE])
+        $this->assertTrue(
+            self::containsExactlyOneWhere(
+                $persons,
+                fn (Person $person) => 'alumnus-id' === $person->getIdentifier()
+                    && 'Aksel' === $person->getGivenName()
+                    && 'Østergaard' === $person->getFamilyName()
+                    && 'aksel.ostergaard@alumni.someuni.at' === $person->getLocalData()[self::EMAIL_ATTRIBUTE]
+            )
         );
     }
 
-    public function testGetPersonsWithLocalDataNewRequest(): void
+    public function testGetPersonsWithLocalDataNewPersonClaimsApiRequest(): void
     {
-        TestPersonProviderFactory::mockPersonClaimsApiResponse($this->personProvider); // getting employee address should trigger a new api request
+        // getting employee address should trigger a new api request
+        TestPersonProviderFactory::mockPersonClaimsApiResponse($this->personProvider);
 
         $options = [];
         Options::requestLocalDataAttributes($options, [
@@ -297,41 +305,135 @@ class PersonProviderTest extends ApiTestCase
             self::EMPLOYEE_WORK_ADDRESS_ATTRIBUTE]);
         $persons = $this->personProvider->getPersons(1, 10, $options);
         $this->assertCount(3, $persons);
-        $this->assertTrue(self::containsExactlyOneWhere($persons,
+        $this->assertTrue(
+            self::containsExactlyOneWhere(
+                $persons,
+                fn (Person $person) => self::STAFF_USER_IDENTIFIER === $person->getIdentifier()
+                    && 'Eleanora' === $person->getGivenName()
+                    && 'Quill-Weatherby' === $person->getFamilyName()
+                    && 'eleanora.quill@someuni.example' === $person->getLocalData()[self::EMAIL_ATTRIBUTE]
+                    && 'Graz' === $person->getLocalData()[self::EMPLOYEE_POSTAL_ADDRESS_ATTRIBUTE]['city']
+                    && 'AT' === $person->getLocalData()[self::EMPLOYEE_POSTAL_ADDRESS_ATTRIBUTE]['country']
+                    && '8010' === $person->getLocalData()[self::EMPLOYEE_POSTAL_ADDRESS_ATTRIBUTE]['postalCode']
+                    && 'Street 123' === $person->getLocalData()[self::EMPLOYEE_POSTAL_ADDRESS_ATTRIBUTE]['street']
+                    && 'PA' === $person->getLocalData()[self::EMPLOYEE_POSTAL_ADDRESS_ATTRIBUTE]['addressTypeKey']
+                    && 'Wien' === $person->getLocalData()[self::EMPLOYEE_WORK_ADDRESS_ATTRIBUTE]['city']
+                    && 'AT' === $person->getLocalData()[self::EMPLOYEE_WORK_ADDRESS_ATTRIBUTE]['country']
+                    && '1010' === $person->getLocalData()[self::EMPLOYEE_WORK_ADDRESS_ATTRIBUTE]['postalCode']
+                    && 'Hohenplatz 3, Institut für Phantastik' === $person->getLocalData()[self::EMPLOYEE_WORK_ADDRESS_ATTRIBUTE]['street']
+                    && 'DO' === $person->getLocalData()[self::EMPLOYEE_WORK_ADDRESS_ATTRIBUTE]['addressTypeKey']
+                    && '44' === $person->getLocalData()[self::EMPLOYEE_WORK_ADDRESS_ATTRIBUTE]['roomIdentifier']
+                    && '37' === $person->getLocalData()[self::EMPLOYEE_WORK_ADDRESS_ATTRIBUTE]['contactOrganizationIdentifier']
+            )
+        );
+
+        $this->assertTrue(
+            self::containsExactlyOneWhere(
+                $persons,
+                fn (Person $person) => 'student-id' === $person->getIdentifier()
+                    && 'Luna' === $person->getGivenName()
+                    && 'Pérez-Altamirano' === $person->getFamilyName()
+                    && 'luna.perez@someuni.edu' === $person->getLocalData()[self::EMAIL_ATTRIBUTE]
+                    && null === $person->getLocalData()[self::EMPLOYEE_POSTAL_ADDRESS_ATTRIBUTE]
+                    && null === $person->getLocalData()[self::EMPLOYEE_WORK_ADDRESS_ATTRIBUTE]
+            )
+        );
+        $this->assertTrue(
+            self::containsExactlyOneWhere(
+                $persons,
+                fn (Person $person) => 'alumnus-id' === $person->getIdentifier()
+                    && 'Aksel' === $person->getGivenName()
+                    && 'Østergaard' === $person->getFamilyName()
+                    && 'aksel.ostergaard@alumni.someuni.at' === $person->getLocalData()[self::EMAIL_ATTRIBUTE]
+                    && null === $person->getLocalData()[self::EMPLOYEE_POSTAL_ADDRESS_ATTRIBUTE]
+                    && null === $person->getLocalData()[self::EMPLOYEE_WORK_ADDRESS_ATTRIBUTE]
+            )
+        );
+    }
+
+    public function testGetPersonsWithLocalDataNewUserApiRequest(): void
+    {
+        // getting username should trigger a new user api request
+        TestPersonProviderFactory::mockUserApiResponse($this->personProvider);
+
+        $options = [];
+        Options::requestLocalDataAttributes($options, [
+            self::USERNAME_ATTRIBUTE,
+        ]);
+        $persons = $this->personProvider->getPersons(1, 30, $options);
+        $this->assertCount(3, $persons);
+        $this->assertTrue(self::containsExactlyOneWhere(
+            $persons,
             fn (Person $person) => self::STAFF_USER_IDENTIFIER === $person->getIdentifier()
                 && 'Eleanora' === $person->getGivenName()
                 && 'Quill-Weatherby' === $person->getFamilyName()
-                && 'eleanora.quill@someuni.example' === $person->getLocalData()[self::EMAIL_ATTRIBUTE]
+                && 1 === count($person->getLocalData())
+                && 'maxm' === $person->getLocalData()[self::USERNAME_ATTRIBUTE]
+        ));
+        $this->assertTrue(self::containsExactlyOneWhere(
+            $persons,
+            fn (Person $person) => 'student-id' === $person->getIdentifier()
+                && 'Luna' === $person->getGivenName()
+                && 'Pérez-Altamirano' === $person->getFamilyName()
+                && 1 === count($person->getLocalData())
+                && 'maxs' === $person->getLocalData()[self::USERNAME_ATTRIBUTE]
+        ));
+        $this->assertTrue(self::containsExactlyOneWhere(
+            $persons,
+            fn (Person $person) => 'alumnus-id' === $person->getIdentifier()
+                && 'Aksel' === $person->getGivenName()
+                && 'Østergaard' === $person->getFamilyName()
+                && 1 === count($person->getLocalData())
+                && 'maxa' === $person->getLocalData()[self::USERNAME_ATTRIBUTE]
+        ));
+    }
+
+    public function testGetPersonsWithLocalDataNewUserApiAndPersonClaimsApiRequest(): void
+    {
+        // getting username/address should trigger a new user/person claims api request
+        TestPersonProviderFactory::mockApiResponses($this->personProvider, [
+            new \GuzzleHttp\Psr7\Response(200, ['Content-Type' => 'application/json'], TestPersonProviderFactory::getPersonClaimsApiTestResponse()),
+            new \GuzzleHttp\Psr7\Response(200, ['Content-Type' => 'application/json'], TestPersonProviderFactory::getUserApiTestResponse()),
+        ]);
+
+        $options = [];
+        Options::requestLocalDataAttributes($options, [
+            self::EMPLOYEE_POSTAL_ADDRESS_ATTRIBUTE,
+            self::USERNAME_ATTRIBUTE,
+        ]);
+        $persons = $this->personProvider->getPersons(1, 30, $options);
+        $this->assertCount(3, $persons);
+        $this->assertTrue(self::containsExactlyOneWhere(
+            $persons,
+            fn (Person $person) => self::STAFF_USER_IDENTIFIER === $person->getIdentifier()
+                && 'Eleanora' === $person->getGivenName()
+                && 'Quill-Weatherby' === $person->getFamilyName()
+                && 2 === count($person->getLocalData())
+                && 'maxm' === $person->getLocalData()[self::USERNAME_ATTRIBUTE]
                 && 'Graz' === $person->getLocalData()[self::EMPLOYEE_POSTAL_ADDRESS_ATTRIBUTE]['city']
                 && 'AT' === $person->getLocalData()[self::EMPLOYEE_POSTAL_ADDRESS_ATTRIBUTE]['country']
                 && '8010' === $person->getLocalData()[self::EMPLOYEE_POSTAL_ADDRESS_ATTRIBUTE]['postalCode']
                 && 'Street 123' === $person->getLocalData()[self::EMPLOYEE_POSTAL_ADDRESS_ATTRIBUTE]['street']
                 && 'PA' === $person->getLocalData()[self::EMPLOYEE_POSTAL_ADDRESS_ATTRIBUTE]['addressTypeKey']
-                && 'Wien' === $person->getLocalData()[self::EMPLOYEE_WORK_ADDRESS_ATTRIBUTE]['city']
-                && 'AT' === $person->getLocalData()[self::EMPLOYEE_WORK_ADDRESS_ATTRIBUTE]['country']
-                && '1010' === $person->getLocalData()[self::EMPLOYEE_WORK_ADDRESS_ATTRIBUTE]['postalCode']
-                && 'Hohenplatz 3, Institut für Phantastik' === $person->getLocalData()[self::EMPLOYEE_WORK_ADDRESS_ATTRIBUTE]['street']
-                && 'DO' === $person->getLocalData()[self::EMPLOYEE_WORK_ADDRESS_ATTRIBUTE]['addressTypeKey']
-                && '44' === $person->getLocalData()[self::EMPLOYEE_WORK_ADDRESS_ATTRIBUTE]['roomIdentifier']
-                && '37' === $person->getLocalData()[self::EMPLOYEE_WORK_ADDRESS_ATTRIBUTE]['contactOrganizationIdentifier'])
-        );
-
-        $this->assertTrue(self::containsExactlyOneWhere($persons,
+        ));
+        $this->assertTrue(self::containsExactlyOneWhere(
+            $persons,
             fn (Person $person) => 'student-id' === $person->getIdentifier()
                 && 'Luna' === $person->getGivenName()
                 && 'Pérez-Altamirano' === $person->getFamilyName()
-                && 'luna.perez@someuni.edu' === $person->getLocalData()[self::EMAIL_ATTRIBUTE]
+                && 2 === count($person->getLocalData())
+                && 'maxs' === $person->getLocalData()[self::USERNAME_ATTRIBUTE]
                 && null === $person->getLocalData()[self::EMPLOYEE_POSTAL_ADDRESS_ATTRIBUTE]
-                && null === $person->getLocalData()[self::EMPLOYEE_WORK_ADDRESS_ATTRIBUTE])
-        );
-        $this->assertTrue(self::containsExactlyOneWhere($persons,
+        ));
+        $this->assertTrue(self::containsExactlyOneWhere(
+            $persons,
             fn (Person $person) => 'alumnus-id' === $person->getIdentifier()
                 && 'Aksel' === $person->getGivenName()
                 && 'Østergaard' === $person->getFamilyName()
-                && 'aksel.ostergaard@alumni.someuni.at' === $person->getLocalData()[self::EMAIL_ATTRIBUTE]
+                && 2 === count($person->getLocalData())
+                && 'maxa' === $person->getLocalData()[self::USERNAME_ATTRIBUTE]
                 && null === $person->getLocalData()[self::EMPLOYEE_POSTAL_ADDRESS_ATTRIBUTE]
-                && null === $person->getLocalData()[self::EMPLOYEE_WORK_ADDRESS_ATTRIBUTE])
-        );
+        ));
     }
 
     public function testGetPersonsWithSearchParameter(): void
@@ -389,10 +491,98 @@ class PersonProviderTest extends ApiTestCase
         $this->assertNull($this->personProvider->getPersonIdentifierByEmail('foo'));
     }
 
-    public function testGetUserFromApiCached(): void
+    public function testGetCurrentResultPersonIdentifiersItem(): void
+    {
+        $this->personProvider->getPerson(self::STAFF_USER_IDENTIFIER);
+
+        $identifiers = $this->personProvider->getCurrentResultPersonIdentifiers();
+        $this->assertCount(1, $identifiers);
+        $this->assertContains(self::STAFF_USER_IDENTIFIER, $identifiers);
+    }
+
+    public function testGetCurrentResultPersonIdentifiersCollection(): void
+    {
+        $this->personProvider->getPersons(1, 10); // caches the person ids of current request result
+
+        $identifiers = $this->personProvider->getCurrentResultPersonIdentifiers();
+        $this->assertCount(3, $identifiers);
+        $this->assertContains(self::STAFF_USER_IDENTIFIER, $identifiers);
+        $this->assertContains(self::STUDENT_USER_IDENTIFIER, $identifiers);
+        $this->assertContains(self::ALUMNUS_USER_IDENTIFIER, $identifiers);
+    }
+
+    public function testGetPersonClaimsResourceFromApiCached(): void
+    {
+        TestPersonProviderFactory::mockPersonClaimsApiResponse($this->personProvider);
+
+        $personClaims = $this->personProvider->getPersonClaimsResourceFromApiCached(self::STAFF_USER_IDENTIFIER);
+        $this->assertSame(self::STAFF_USER_IDENTIFIER, $personClaims->getUid());
+        $this->assertSame('eleanora.quill@someuni.example', $personClaims->getEmail());
+
+        // NOTE: no more requests must be made
+        $personClaims = $this->personProvider->getPersonClaimsResourceFromApiCached(self::STAFF_USER_IDENTIFIER);
+        $this->assertSame(self::STAFF_USER_IDENTIFIER, $personClaims->getUid());
+        $this->assertSame('eleanora.quill@someuni.example', $personClaims->getEmail());
+    }
+
+    public function testGetPersonClaimsResourceFromApiCachedNotFound(): void
+    {
+        TestPersonProviderFactory::mockEmptyApiResponse($this->personProvider);
+
+        try {
+            $this->personProvider->getPersonClaimsResourceFromApiCached('foo');
+            $this->fail('expected ApiError not thrown');
+        } catch (ApiError $apiError) {
+            $this->assertSame(Response::HTTP_NOT_FOUND, $apiError->getStatusCode());
+        }
+    }
+
+    public function testGetPersonClaimsResourceFromApiCachedAfterGetPerson(): void
+    {
+        $this->personProvider->getPerson(self::STAFF_USER_IDENTIFIER);
+
+        TestPersonProviderFactory::mockPersonClaimsApiResponse($this->personProvider);
+
+        $personClaims = $this->personProvider->getPersonClaimsResourceFromApiCached(self::STAFF_USER_IDENTIFIER);
+        $this->assertSame(self::STAFF_USER_IDENTIFIER, $personClaims->getUid());
+        $this->assertSame('eleanora.quill@someuni.example', $personClaims->getEmail());
+
+        // NOTE: no more requests must be made
+        $personClaims = $this->personProvider->getPersonClaimsResourceFromApiCached(self::STAFF_USER_IDENTIFIER);
+        $this->assertSame(self::STAFF_USER_IDENTIFIER, $personClaims->getUid());
+        $this->assertSame('eleanora.quill@someuni.example', $personClaims->getEmail());
+    }
+
+    public function testGetPersonClaimsResourceFromApiCachedAfterGetPersons(): void
+    {
+        $this->personProvider->getPersons(1, 10); // caches the person ids of current request result
+
+        TestPersonProviderFactory::mockPersonClaimsApiResponse($this->personProvider);
+
+        $personClaims = $this->personProvider->getPersonClaimsResourceFromApiCached(self::STAFF_USER_IDENTIFIER);
+        $this->assertSame(self::STAFF_USER_IDENTIFIER, $personClaims->getUid());
+        $this->assertSame('eleanora.quill@someuni.example', $personClaims->getEmail());
+
+        // NOTE: no more requests must be made
+        $personClaims = $this->personProvider->getPersonClaimsResourceFromApiCached(self::STUDENT_USER_IDENTIFIER);
+        $this->assertSame(self::STUDENT_USER_IDENTIFIER, $personClaims->getUid());
+        $this->assertSame('luna.perez@someuni.edu', $personClaims->getEmail());
+
+        $user = $this->personProvider->getPersonClaimsResourceFromApiCached(self::ALUMNUS_USER_IDENTIFIER);
+        $this->assertSame(self::ALUMNUS_USER_IDENTIFIER, $user->getUid());
+        $this->assertSame('aksel.ostergaard@alumni.someuni.at', $user->getEmail());
+    }
+
+    public function testGetUserResourceFromApiCached(): void
     {
         TestPersonProviderFactory::mockUserApiResponse($this->personProvider);
 
+        $user = $this->personProvider->getUserResourceFromApiCached(self::STAFF_USER_IDENTIFIER);
+        $this->assertSame(self::STAFF_USER_IDENTIFIER, $user->getPersonUid());
+        $this->assertSame('eleanora.quill@someuni.example', $user->getEmail(0));
+        $this->assertSame('maxm', $user->getUsername(0));
+
+        // NOTE: no more requests must be made
         $user = $this->personProvider->getUserResourceFromApiCached(self::STAFF_USER_IDENTIFIER);
         $this->assertSame(self::STAFF_USER_IDENTIFIER, $user->getPersonUid());
         $this->assertSame('eleanora.quill@someuni.example', $user->getEmail(0));
@@ -411,17 +601,71 @@ class PersonProviderTest extends ApiTestCase
         }
     }
 
-    public function testRequestCacheCurrentResultUsers(): void
+    public function testGetUserResourceFromApiCachedAfterGetPerson(): void
     {
         $this->personProvider->getPerson(self::STAFF_USER_IDENTIFIER); // caches the person ids of current request result
 
         TestPersonProviderFactory::mockUserApiResponse($this->personProvider);
+
+        $user = $this->personProvider->getUserResourceFromApiCached(self::STAFF_USER_IDENTIFIER);
+        $this->assertSame(self::STAFF_USER_IDENTIFIER, $user->getPersonUid());
+        $this->assertSame('eleanora.quill@someuni.example', $user->getEmail(0));
+        $this->assertSame('maxm', $user->getUsername(0));
 
         // NOTE: no more requests must be made
         $user = $this->personProvider->getUserResourceFromApiCached(self::STAFF_USER_IDENTIFIER);
         $this->assertSame(self::STAFF_USER_IDENTIFIER, $user->getPersonUid());
         $this->assertSame('eleanora.quill@someuni.example', $user->getEmail(0));
         $this->assertSame('maxm', $user->getUsername(0));
+    }
+
+    public function testGetUserResourceFromApiCachedAfterGetPersons(): void
+    {
+        $this->personProvider->getPersons(1, 10); // caches the person ids of current request result
+
+        TestPersonProviderFactory::mockUserApiResponse($this->personProvider);
+
+        $user = $this->personProvider->getUserResourceFromApiCached(self::STAFF_USER_IDENTIFIER);
+        $this->assertSame(self::STAFF_USER_IDENTIFIER, $user->getPersonUid());
+        $this->assertSame('eleanora.quill@someuni.example', $user->getEmail(0));
+        $this->assertSame('maxm', $user->getUsername(0));
+
+        // NOTE: no more requests must be made
+        $user = $this->personProvider->getUserResourceFromApiCached(self::STUDENT_USER_IDENTIFIER);
+        $this->assertSame(self::STUDENT_USER_IDENTIFIER, $user->getPersonUid());
+        $this->assertSame('luna.perez@someuni.edu', $user->getEmail(0));
+        $this->assertSame('maxs', $user->getUsername(0));
+
+        $user = $this->personProvider->getUserResourceFromApiCached(self::ALUMNUS_USER_IDENTIFIER);
+        $this->assertSame(self::ALUMNUS_USER_IDENTIFIER, $user->getPersonUid());
+        $this->assertSame('aksel.ostergaard@alumni.someuni.at', $user->getEmail(0));
+        $this->assertSame('maxa', $user->getUsername(0));
+    }
+
+    public function testGetEmployeePostalAddress(): void
+    {
+        TestPersonProviderFactory::mockPersonClaimsApiResponse($this->personProvider);
+
+        $address = $this->personProvider->getEmployeePostalAddress(self::STAFF_USER_IDENTIFIER);
+        $this->assertEquals('Graz', $address['city']);
+        $this->assertEquals('AT', $address['country']);
+        $this->assertEquals('8010', $address['postalCode']);
+        $this->assertEquals('Street 123', $address['street']);
+        $this->assertEquals('PA', $address['addressTypeKey']);
+    }
+
+    public function testGetEmployeeWorkAddress(): void
+    {
+        TestPersonProviderFactory::mockPersonClaimsApiResponse($this->personProvider);
+
+        $address = $this->personProvider->getEmployeeWorkAddress(self::STAFF_USER_IDENTIFIER);
+        $this->assertEquals('Wien', $address['city']);
+        $this->assertEquals('AT', $address['country']);
+        $this->assertEquals('1010', $address['postalCode']);
+        $this->assertEquals('Hohenplatz 3, Institut für Phantastik', $address['street']);
+        $this->assertEquals('DO', $address['addressTypeKey']);
+        $this->assertEquals('44', $address['roomIdentifier']);
+        $this->assertEquals('37', $address['contactOrganizationIdentifier']);
     }
 
     public function testIsCurrentUserAnEmployee(): void
@@ -460,5 +704,10 @@ class PersonProviderTest extends ApiTestCase
     private function login(?string $userIdentifier = self::STAFF_USER_IDENTIFIER, array $userAttributes = []): void
     {
         TestAuthorizationService::setUp($this->personProvider, $userIdentifier, $userAttributes);
+    }
+
+    protected static function containsExactlyOneWhere(array $results, callable $where): bool
+    {
+        return 1 === count(array_filter($results, $where));
     }
 }

@@ -63,11 +63,15 @@ class TestPersonProviderFactory
         ],
     ];
 
-    public static function createTestPersonProvider(ContainerInterface $container,
-        array $personEventSubscribers = [], ?array $localDataMappingConfig = null): PersonProvider
-    {
-        $entityManager = TestEntityManager::setUpEntityManager($container,
-            DbpRelayBasePersonConnectorCampusonlineExtension::ENTITY_MANAGER_ID);
+    public static function createTestPersonProvider(
+        ContainerInterface $container,
+        array $personEventSubscribers = [],
+        ?array $localDataMappingConfig = null
+    ): PersonProvider {
+        $entityManager = TestEntityManager::setUpEntityManager(
+            $container,
+            DbpRelayBasePersonConnectorCampusonlineExtension::ENTITY_MANAGER_ID
+        );
 
         $config = self::CONFIG;
         if ($localDataMappingConfig !== null) {
@@ -76,7 +80,10 @@ class TestPersonProviderFactory
 
         $eventDispatcher = new EventDispatcher();
         $personProvider = new PersonProvider(
-            $entityManager, new ArrayAdapter(), $eventDispatcher);
+            $entityManager,
+            new ArrayAdapter(),
+            $eventDispatcher
+        );
         $personProvider->setLogger(new NullLogger());
         $personProvider->setConfig($config);
 
@@ -93,46 +100,68 @@ class TestPersonProviderFactory
         return $personProvider;
     }
 
-    public static function login(PersonProvider $personProvider,
+    public static function login(
+        PersonProvider $personProvider,
         ?string $currentUserIdentifier = TestAuthorizationService::TEST_USER_IDENTIFIER,
-        array $currentUserAttributes = []): void
-    {
-        TestAuthorizationService::setUp($personProvider,
+        array $currentUserAttributes = []
+    ): void {
+        TestAuthorizationService::setUp(
+            $personProvider,
             currentUserIdentifier: $currentUserIdentifier,
-            currentUserAttributes: $currentUserAttributes);
+            currentUserAttributes: $currentUserAttributes
+        );
     }
 
     public static function mockPersonClaimsApiResponse(PersonProvider $personProvider): void
     {
-        self::mockApiResponse($personProvider,
-            file_get_contents(__DIR__.'/person_claims_api_response.json'));
+        self::mockApiResponse(
+            $personProvider,
+            self::getPersonClaimsApiTestResponse()
+        );
     }
 
     public static function mockUserApiResponse(PersonProvider $personProvider): void
     {
-        self::mockApiResponse($personProvider,
-            file_get_contents(__DIR__.'/users_api_response.json')
+        self::mockApiResponse(
+            $personProvider,
+            self::getUserApiTestResponse()
         );
     }
 
     public static function mockEmptyApiResponse(PersonProvider $personProvider): void
     {
-        self::mockApiResponse($personProvider,
-            file_get_contents(__DIR__.'/empty_api_response.json')
+        self::mockApiResponse(
+            $personProvider,
+            self::getEmptyApiTestResponse()
         );
     }
 
-    public static function mockApiResponse(PersonProvider $personProvider,
+    public static function mockApiResponse(
+        PersonProvider $personProvider,
         string $content,
         int $status = \Symfony\Component\HttpFoundation\Response::HTTP_OK,
-        bool $mockAuthServerResponses = true): void
-    {
+        bool $mockAuthServerResponses = true
+    ): void {
         $responses = [...($mockAuthServerResponses ? self::createMockAuthServerResponses() : []),
             new Response(
                 $status,
                 ['Content-Type' => 'application/json'],
-                $content),
+                $content
+            ),
         ];
+
+        $stack = HandlerStack::create(new MockHandler($responses));
+        $personProvider->setClientHandler($stack);
+    }
+
+    /**
+     * @param Response[] $responses
+     */
+    public static function mockApiResponses(PersonProvider $personProvider, array $responses, bool $mockAuthServerResponses = true): void
+    {
+        if ($mockAuthServerResponses) {
+            $responses = array_merge(self::createMockAuthServerResponses(), $responses);
+        }
 
         $stack = HandlerStack::create(new MockHandler($responses));
         $personProvider->setClientHandler($stack);
@@ -145,6 +174,21 @@ class TestPersonProviderFactory
             new Response(200, ['Content-Type' => 'application/json;charset=utf-8'], '{"token_endpoint": "https://token-endpoint.net/"}'),
             new Response(200, ['Content-Type' => 'application/json;charset=utf-8'], '{"access_token": "token", "expires_in": 3600, "token_type": "Bearer"}'),
         ];
+    }
+
+    public static function getPersonClaimsApiTestResponse(): string
+    {
+        return file_get_contents(__DIR__.'/person_claims_api_response.json');
+    }
+
+    public static function getUserApiTestResponse(): string
+    {
+        return file_get_contents(__DIR__.'/users_api_response.json');
+    }
+
+    public static function getEmptyApiTestResponse(): string
+    {
+        return file_get_contents(__DIR__.'/empty_api_response.json');
     }
 
     private static function recreatePersonCache(PersonProvider $personProvider, EntityManagerInterface $entityManager): void
@@ -172,11 +216,13 @@ class TestPersonProviderFactory
             new Response(
                 200,
                 ['Content-Type' => 'application/json'],
-                file_get_contents(__DIR__.'/users_api_response.json')),
+                self::getUserApiTestResponse()
+            ),
             new Response(
                 200,
                 ['Content-Type' => 'application/json'],
-                file_get_contents(__DIR__.'/person_claims_api_response.json')),
+                self::getPersonClaimsApiTestResponse()
+            ),
         ];
 
         $stack = HandlerStack::create(new MockHandler($responses));

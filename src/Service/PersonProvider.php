@@ -119,8 +119,8 @@ class PersonProvider extends AbstractAuthorizationService implements PersonProvi
     public function __construct(
         private readonly EntityManagerInterface $entityManager,
         private readonly CacheItemPoolInterface $campusonlineApiCache,
-        EventDispatcherInterface $eventDispatcher)
-    {
+        EventDispatcherInterface $eventDispatcher
+    ) {
         parent::__construct();
 
         if ($this->campusonlineApiCache instanceof NamespacedPoolInterface) {
@@ -149,7 +149,8 @@ class PersonProvider extends AbstractAuthorizationService implements PersonProvi
     {
         $this->getPersonClaimsApi()->getPersonClaimsPageCursorBased(
             claims: self::ALL_CLAIMS,
-            maxNumItems: 1);
+            maxNumItems: 1
+        );
     }
 
     public function checkUsersApi(): void
@@ -159,7 +160,8 @@ class PersonProvider extends AbstractAuthorizationService implements PersonProvi
                 UserApi::ACCOUNT_STATUS_KEY_QUERY_PARAMETER_NAME => self::ACCOUNT_STATUS_KEYS_TO_FETCH,
                 UserApi::ACCOUNT_TYPE_KEY_QUERY_PARAMETER_NAME => self::ACCOUNT_TYPE_KEYS_TO_FETCH,
             ],
-            maxNumItems: 1);
+            maxNumItems: 1
+        );
     }
 
     public function reset(): void
@@ -277,7 +279,9 @@ class PersonProvider extends AbstractAuthorizationService implements PersonProvi
         if ($this->currentPerson === false
             || ($this->currentPerson !== null
                 && false === LocalDataEventDispatcher::areRequestedLocalDataAttributesIdentical(
-                    $this->currentPerson, Options::getLocalDataAttributes($options)))) {
+                    $this->currentPerson,
+                    Options::getLocalDataAttributes($options)
+                ))) {
             // currentPerson not initialized yet (=== false) or requested local data attributes have changed
             if ($currentCachedPerson = $this->getCurrentCachedPerson()) {
                 $this->eventDispatcher->onNewOperation($options);
@@ -423,9 +427,11 @@ class PersonProvider extends AbstractAuthorizationService implements PersonProvi
                                     $this->cachedPersonsRequestCache,
                                     $currentPersonIndex,
                                     self::MAX_NUM_PERSON_UIDS_PER_REQUEST,
-                                    true)
+                                    true
+                                )
                             ),
-                        ])->getResources() as $userResource) {
+                        ]
+                    )->getResources() as $userResource) {
                         $this->userResourcesRequestCache[$userResource->getPersonUid()] = $userResource;
                     }
                     $currentPersonIndex += self::MAX_NUM_PERSON_UIDS_PER_REQUEST;
@@ -454,45 +460,14 @@ class PersonProvider extends AbstractAuthorizationService implements PersonProvi
         return $this->getEmployeeAddress($personIdentifier, 'DO');
     }
 
-    /**
-     * @return array<string, string>|null
-     */
-    public function getEmployeeAddress(string $personIdentifier, string $employeeAddressTypeAbbreviation): ?array
-    {
-        $address = null;
-        $personClaims = $this->getPersonClaimsResourceFromApiCached($personIdentifier);
-        for ($addressIndex = 0; $addressIndex < $personClaims->getNumAddresses(); ++$addressIndex) {
-            if ($personClaims->getEmployeeAddressTypeAbbreviation($addressIndex) === $employeeAddressTypeAbbreviation) {
-                $address = Tools::createAddressArray(
-                    street: $personClaims->getAddressStreet($addressIndex),
-                    postalCode: $personClaims->getAddressPostalCode($addressIndex),
-                    city: $personClaims->getAddressCity($addressIndex),
-                    country: $personClaims->getAddressCountry($addressIndex),
-                    additionalInformation: $personClaims->getAdditionalAddressInfo($addressIndex)
-                );
-                if ($addressTypeKey = $personClaims->getEmployeeAddressTypeAbbreviation($addressIndex)) {
-                    $address['addressTypeKey'] = $addressTypeKey;
-                }
-                if ($roomIdentifier = $personClaims->getRoomUid($addressIndex)) {
-                    $address['roomIdentifier'] = (string) $roomIdentifier;
-                }
-                if ($contactOrganizationIdentifier = $personClaims->getContactOrgUid($addressIndex)) {
-                    $address['contactOrganizationIdentifier'] = (string) $contactOrganizationIdentifier;
-                }
-
-                break;
-            }
-        }
-
-        return $address;
-    }
-
     public function getPersonClaimsResourceFromApiCached(string $personIdentifier): PersonClaimsResource
     {
         if (null === ($personClaimsCached = $this->getRequestCachedPersonClaimsResources()[$personIdentifier] ?? null)) {
             try {
                 $personClaimsCached = $this->getPersonClaimsApi()->getPersonClaimsByPersonUid(
-                    $personIdentifier, self::ALL_CLAIMS);
+                    $personIdentifier,
+                    self::ALL_CLAIMS
+                );
                 $this->personClaimsResourcesRequestCache[$personIdentifier] = $personClaimsCached;
             } catch (\Throwable $throwable) {
                 throw $this->dispatchException($throwable, 'failed to get person from CO person claims API');
@@ -553,11 +528,13 @@ class PersonProvider extends AbstractAuthorizationService implements PersonProvi
                                     $this->cachedPersonsRequestCache,
                                     $currentPersonIndex,
                                     self::MAX_NUM_PERSON_UIDS_PER_REQUEST,
-                                    true)
+                                    true
+                                )
                             ),
                         ],
                         claims: self::ALL_CLAIMS,
-                        maxNumItems: self::MAX_NUM_PERSON_UIDS_PER_REQUEST);
+                        maxNumItems: self::MAX_NUM_PERSON_UIDS_PER_REQUEST
+                    );
 
                     /** @var PersonClaimsResource $personClaimsResource */
                     foreach ($resourcePage->getResources() as $personClaimsResource) {
@@ -571,6 +548,39 @@ class PersonProvider extends AbstractAuthorizationService implements PersonProvi
         }
 
         return $this->personClaimsResourcesRequestCache;
+    }
+
+    /**
+     * @return array<string, string>|null
+     */
+    private function getEmployeeAddress(string $personIdentifier, string $employeeAddressTypeAbbreviation): ?array
+    {
+        $address = null;
+        $personClaims = $this->getPersonClaimsResourceFromApiCached($personIdentifier);
+        for ($addressIndex = 0; $addressIndex < $personClaims->getNumAddresses(); ++$addressIndex) {
+            if ($personClaims->getEmployeeAddressTypeAbbreviation($addressIndex) === $employeeAddressTypeAbbreviation) {
+                $address = Tools::createAddressArray(
+                    street: $personClaims->getAddressStreet($addressIndex),
+                    postalCode: $personClaims->getAddressPostalCode($addressIndex),
+                    city: $personClaims->getAddressCity($addressIndex),
+                    country: $personClaims->getAddressCountry($addressIndex),
+                    additionalInformation: $personClaims->getAdditionalAddressInfo($addressIndex)
+                );
+                if ($addressTypeKey = $personClaims->getEmployeeAddressTypeAbbreviation($addressIndex)) {
+                    $address['addressTypeKey'] = $addressTypeKey;
+                }
+                if ($roomIdentifier = $personClaims->getRoomUid($addressIndex)) {
+                    $address['roomIdentifier'] = (string) $roomIdentifier;
+                }
+                if ($contactOrganizationIdentifier = $personClaims->getContactOrgUid($addressIndex)) {
+                    $address['contactOrganizationIdentifier'] = (string) $contactOrganizationIdentifier;
+                }
+
+                break;
+            }
+        }
+
+        return $address;
     }
 
     private function getCurrentCachedPerson(): ?CachedPerson
@@ -679,7 +689,10 @@ class PersonProvider extends AbstractAuthorizationService implements PersonProvi
     {
         $personAndExtraDataPage = $this->getPersonsFromCache(
             Pagination::getFirstItemIndex($currentPageNumber, $maxNumItemsPerPage),
-            $maxNumItemsPerPage, $filter, $options);
+            $maxNumItemsPerPage,
+            $filter,
+            $options
+        );
 
         // NOTE: post-processing is done after all persons of been collected, so that API requests for additional data (e.g. person claims)
         // can be optimized by caching results for the whole page instead of doing individual requests for each person during post-processing
@@ -692,7 +705,11 @@ class PersonProvider extends AbstractAuthorizationService implements PersonProvi
     private function postProcessPerson(PersonAndExtraData $personAndExtraData, array $options): Person
     {
         $postEvent = new PersonPostEvent(
-            $personAndExtraData->getPerson(), $personAndExtraData->getExtraData(), $this, $options);
+            $personAndExtraData->getPerson(),
+            $personAndExtraData->getExtraData(),
+            $this,
+            $options
+        );
         $this->eventDispatcher->dispatch($postEvent);
 
         return $personAndExtraData->getPerson();
@@ -709,8 +726,10 @@ class PersonProvider extends AbstractAuthorizationService implements PersonProvi
                 $this->wasCurrentPersonIdentifierRetrieved = true;
             } catch (\Exception $exception) {
                 $this->logger->error('failed to get current person identifier: '.$exception->getMessage());
-                throw ApiError::withDetails(Response::HTTP_INTERNAL_SERVER_ERROR,
-                    'failed to get current person identifier');
+                throw ApiError::withDetails(
+                    Response::HTTP_INTERNAL_SERVER_ERROR,
+                    'failed to get current person identifier'
+                );
             }
         }
 
@@ -718,8 +737,9 @@ class PersonProvider extends AbstractAuthorizationService implements PersonProvi
     }
 
     private static function createPersonAndExtraDataFromCachedPerson(
-        CachedPerson $cachedPerson, array $options): PersonAndExtraData
-    {
+        CachedPerson $cachedPerson,
+        array $options
+    ): PersonAndExtraData {
         $person = new Person();
         $person->setIdentifier($cachedPerson->getUid());
         $person->setGivenName($cachedPerson->getGivenName());
@@ -729,8 +749,8 @@ class PersonProvider extends AbstractAuthorizationService implements PersonProvi
     }
 
     private static function createCachedPersonStagingFromPersonClaimsResource(
-        PersonClaimsResource $personClaimsResource): CachedPersonStaging
-    {
+        PersonClaimsResource $personClaimsResource
+    ): CachedPersonStaging {
         $cachedPerson = new CachedPersonStaging();
         $cachedPerson->setUid($personClaimsResource->getUid());
         $cachedPerson->setGivenName($personClaimsResource->getGivenName());
@@ -827,8 +847,12 @@ class PersonProvider extends AbstractAuthorizationService implements PersonProvi
         while ($currentPersonIndex < count($personsIdentifiersToPersonGroups)) {
             $personClaimsQueryParameters = [
                 PersonClaimsApi::PERSON_UID_QUERY_PARAMETER_NAME => array_keys(
-                    array_slice($personsIdentifiersToPersonGroups,
-                        $currentPersonIndex, self::MAX_NUM_PERSON_UIDS_PER_REQUEST, true)
+                    array_slice(
+                        $personsIdentifiersToPersonGroups,
+                        $currentPersonIndex,
+                        self::MAX_NUM_PERSON_UIDS_PER_REQUEST,
+                        true
+                    )
                 ),
             ];
 
@@ -836,7 +860,8 @@ class PersonProvider extends AbstractAuthorizationService implements PersonProvi
             foreach ($this->getPersonClaimsApi()->getPersonClaimsPageOffsetBased(
                 queryParameters: $personClaimsQueryParameters,
                 claims: self::PERSON_CLAIMS_REQUIRED_FOR_CACHE,
-                maxNumItems: self::MAX_NUM_PERSON_UIDS_PER_REQUEST) as $personClaimsResource) {
+                maxNumItems: self::MAX_NUM_PERSON_UIDS_PER_REQUEST
+            ) as $personClaimsResource) {
                 $cachedPersonStaging = null;
                 $personGroupsMask = 0;
                 if ($checkIfAlreadyAdded
@@ -864,6 +889,7 @@ class PersonProvider extends AbstractAuthorizationService implements PersonProvi
         return $this->getUserApi()->getUsersCursorBased(
             queryParameters: $queryParameters,
             cursor: $nextCursor,
-            maxNumItems: 1000);
+            maxNumItems: 1000
+        );
     }
 }
