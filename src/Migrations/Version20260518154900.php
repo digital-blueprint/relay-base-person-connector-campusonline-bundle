@@ -15,7 +15,7 @@ class Version20260518154900 extends EntityManagerMigration
 
     public function getDescription(): string
     {
-        return 'replace column personGroups by studentAccount, staffAccount and alumniAccount';
+        return 'replace column personGroups by isStudent, isStaff, isAlumni and isExternal';
     }
 
     public function up(Schema $schema): void
