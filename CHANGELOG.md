@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-## v0.1.14
+## v0.1.15
 
 - Fix migrations
 

@@ -46,8 +46,7 @@ final class Version20260202084500 extends EntityManagerMigration
                    $titlePrefixColumn VARCHAR(128) NULL,
                    $titleSuffixColumn VARCHAR(128) NULL,
                    $genderKeyColumn VARCHAR(4) NULL,
-                   $isStaffColumn SMALLINT DEFAULT 0 NOT NULL,
-                   $personGroupsColumn INT DEFAULT 0 NOT NULL,
+                   $personGroupsColumn INT DEFAULT 0 NOT NULL
                ) DEFAULT CHARACTER SET utf8mb4 COLLATE `utf8mb4_unicode_ci` ENGINE = InnoDB;
             STMT;
         $this->addSql($createStatement);
