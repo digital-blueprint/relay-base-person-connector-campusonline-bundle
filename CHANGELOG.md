@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## v0.1.14
+
+- Fix migrations
+
 ## v0.1.13
 
 - Rework caching of user account/person group information (include information if persons have a group affiliation with or without account)
