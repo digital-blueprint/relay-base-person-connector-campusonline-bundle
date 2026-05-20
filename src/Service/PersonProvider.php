@@ -55,12 +55,14 @@ class PersonProvider extends AbstractAuthorizationService implements PersonProvi
     private const STAFF_ACCOUNT_TYPE_KEY = 'STAFF';
     private const STUDENT_ACCOUNT_TYPE_KEY = 'STUDENT';
     private const ALUMNI_ACCOUNT_TYPE_KEY = 'A';
+    private const BASEACCOUNT_ACCOUNT_TYPE_KEY = 'BASEACCOUNT';
 
     // TODO: make non-const account type keys configurable via config instead of hardcoding them
     private const ACCOUNT_TYPE_KEYS_TO_FETCH = [
         self::STAFF_ACCOUNT_TYPE_KEY,
         self::STUDENT_ACCOUNT_TYPE_KEY,
         self::ALUMNI_ACCOUNT_TYPE_KEY,
+        self::BASEACCOUNT_ACCOUNT_TYPE_KEY,
     ];
 
     private const PERSON_CLAIMS_REQUIRED_FOR_CACHE = [
@@ -73,13 +75,17 @@ class PersonProvider extends AbstractAuthorizationService implements PersonProvi
         Common::MATRICULATION_NUMBER_CLAIM,
         Common::GENDER_CLAIM,
         Common::TITLE_CLAIM,
-        Common::PERSON_GROUPS_CLAIM,
     ];
     private const ALL_CLAIMS = [
         Common::ALL_CLAIM,
     ];
 
     private const MAX_NUM_PERSON_UIDS_PER_REQUEST = 50;
+
+    private const STUDENT_MASK = 0b00000001;
+    private const EMPLOYEE_MASK = 0b00000010;
+    private const ALUMNI_MASK = 0b00000100;
+    private const EXTERNAL_MASK = 0b00001000;
 
     private ?Connection $connection = null;
     private ?PersonClaimsApi $personClaimsApi = null;
@@ -117,7 +123,7 @@ class PersonProvider extends AbstractAuthorizationService implements PersonProvi
     private array $cachedPersonsRequestCache = [];
 
     public function __construct(
-        private readonly EntityManagerInterface $entityManager,
+        protected readonly EntityManagerInterface $entityManager,
         private readonly CacheItemPoolInterface $campusonlineApiCache,
         EventDispatcherInterface $eventDispatcher
     ) {
@@ -187,7 +193,7 @@ class PersonProvider extends AbstractAuthorizationService implements PersonProvi
         $connection = $this->entityManager->getConnection();
         try {
             $this->currentlyRecreatingPersonsCache = true;
-            $this->cachePersonsWithAccountOnly();
+            $this->cachePersonsWithAccount();
 
             $this->eventDispatcher->dispatch(new RecreatePersonCachePostEvent($this->entityManager));
 
@@ -329,17 +335,35 @@ class PersonProvider extends AbstractAuthorizationService implements PersonProvi
     /**
      * May only be called during person cache re-creation, i.e. on @see RecreatePersonCachePostEvent.
      *
-     * @param int $personGroupMask the person group mask indicating the person group(s) of the persons to add (default: employees))
-     *
      * @throws \Throwable
      */
-    public function addPersonsToStagingTable(array $personIdentifiers, int $personGroupMask = CachedPerson::EMPLOYEE_PERSON_GROUP_MASK): void
-    {
+    public function addPersonsToStagingTable(
+        array $personIdentifiers,
+        bool $areAllEmployees = false,
+        bool $areAllStudents = false,
+        bool $areAllAlumni = false,
+        bool $areAllExternals = false
+    ): void {
         if (false === $this->currentlyRecreatingPersonsCache) {
             throw new \LogicException('adding employees to staging table is only allowed during person cache recreation');
         }
+
+        $personGroupMask = 0;
+        if ($areAllEmployees) {
+            $personGroupMask |= self::EMPLOYEE_MASK;
+        }
+        if ($areAllStudents) {
+            $personGroupMask |= self::STUDENT_MASK;
+        }
+        if ($areAllAlumni) {
+            $personGroupMask |= self::ALUMNI_MASK;
+        }
+        if ($areAllExternals) {
+            $personGroupMask |= self::EXTERNAL_MASK;
+        }
+
         try {
-            $this->addPersonsToStagingTableInternal(array_fill_keys($personIdentifiers, $personGroupMask), true);
+            $this->addPersonsToStagingTableInternal(array_fill_keys($personIdentifiers, $personGroupMask), false);
         } catch (\Throwable $throwable) {
             throw $this->dispatchException($throwable, 'Error adding persons to staging table');
         }
@@ -470,22 +494,24 @@ class PersonProvider extends AbstractAuthorizationService implements PersonProvi
         return $this->userResourcesRequestCache[$personIdentifier];
     }
 
-    public function isCurrentUserAnEmployee(): ?bool
+    public function isCurrentUserAnEmployee(): ?int
     {
-        return ($personGroups = $this->getCurrentCachedPerson()?->getPersonGroups()) ?
-            CachedPerson::testIsEmployee($personGroups) : null;
+        return $this->getCurrentCachedPerson()?->getIsStaff();
     }
 
-    public function isCurrentUserAStudent(): ?bool
+    public function isCurrentUserAStudent(): ?int
     {
-        return ($personGroups = $this->getCurrentCachedPerson()?->getPersonGroups()) ?
-            CachedPerson::testIsStudent($personGroups) : null;
+        return $this->getCurrentCachedPerson()?->getIsStudent();
     }
 
-    public function isCurrentUserAnAlumni(): ?bool
+    public function isCurrentUserAnAlumni(): ?int
     {
-        return ($personGroups = $this->getCurrentCachedPerson()?->getPersonGroups()) ?
-            CachedPerson::testIsAlumni($personGroups) : null;
+        return $this->getCurrentCachedPerson()?->getIsAlumni();
+    }
+
+    public function isCurrentUserExternal(): ?int
+    {
+        return $this->getCurrentCachedPerson()?->getIsExternal();
     }
 
     /**
@@ -777,7 +803,7 @@ class PersonProvider extends AbstractAuthorizationService implements PersonProvi
         $cachedPerson->setGenderKey($personClaimsResource->getGenderKey());
         $cachedPerson->setTitlePrefix($personClaimsResource->getTitlePrefix());
         $cachedPerson->setTitleSuffix($personClaimsResource->getTitleSuffix());
-        // NOTE: person groups are set depending on user account info
+        // NOTE: account types are set depending on user account info
 
         return $cachedPerson;
     }
@@ -826,45 +852,46 @@ class PersonProvider extends AbstractAuthorizationService implements PersonProvi
         return $apiError ?? new ApiError(Response::HTTP_INTERNAL_SERVER_ERROR, 'failed to get person(s)');
     }
 
-    private function cachePersonsWithAccountOnly(): void
+    private function cachePersonsWithAccount(): void
     {
         $nextUsersCursor = null;
         do {
             $userResourcePage = $this->getUsersFromCOApi([], $nextUsersCursor);
-            $personsToFetch = [];
+            $personAccountTypes = [];
             /** @var UserResource $userResource */
             foreach ($userResourcePage->getResources() as $userResource) {
-                $personGroupMask = 0;
+                $accountTypes = 0;
                 for ($accountIndex = 0; $accountIndex < $userResource->getNumAccounts(); ++$accountIndex) {
                     if ($userResource->getAccountStatusKey($accountIndex) === AccountsCommon::OK_ACCOUNT_STATUS_KEY) {
-                        $personGroupMask |= match ($userResource->getAccountTypeKey($accountIndex)) {
-                            self::STAFF_ACCOUNT_TYPE_KEY => CachedPerson::EMPLOYEE_PERSON_GROUP_MASK,
-                            self::STUDENT_ACCOUNT_TYPE_KEY => CachedPerson::STUDENT_PERSON_GROUP_MASK,
-                            self::ALUMNI_ACCOUNT_TYPE_KEY => CachedPerson::ALUMNI_PERSON_GROUP_MASK,
+                        $accountTypes |= match ($userResource->getAccountTypeKey($accountIndex)) {
+                            self::STAFF_ACCOUNT_TYPE_KEY => self::EMPLOYEE_MASK,
+                            self::STUDENT_ACCOUNT_TYPE_KEY => self::STUDENT_MASK,
+                            self::ALUMNI_ACCOUNT_TYPE_KEY => self::ALUMNI_MASK,
+                            self::BASEACCOUNT_ACCOUNT_TYPE_KEY => self::EXTERNAL_MASK,
                             default => 0,
                         };
                     }
                 }
-                if ($personGroupMask !== 0) {
-                    $personsToFetch[$userResource->getPersonUid()] = $personGroupMask;
+                if ($accountTypes !== 0) {
+                    $personAccountTypes[$userResource->getPersonUid()] = $accountTypes;
                 }
             }
 
-            $this->addPersonsToStagingTableInternal($personsToFetch);
+            $this->addPersonsToStagingTableInternal($personAccountTypes, true);
         } while (($nextUsersCursor = $userResourcePage->getNextCursor()) !== null);
     }
 
     /**
-     * @param array<string, int> $personsIdentifiersToPersonGroups A mapping from person uid to person group mask
+     * @param array<string, int> $personIdToPersonGroupsMaskMap A mapping from person uid to the person's account types
      */
-    private function addPersonsToStagingTableInternal(array $personsIdentifiersToPersonGroups, bool $checkIfAlreadyAdded = false): void
+    private function addPersonsToStagingTableInternal(array $personIdToPersonGroupsMaskMap, bool $haveAccounts): void
     {
         $currentPersonIndex = 0;
-        while ($currentPersonIndex < count($personsIdentifiersToPersonGroups)) {
+        while ($currentPersonIndex < count($personIdToPersonGroupsMaskMap)) {
             $personClaimsQueryParameters = [
                 PersonClaimsApi::PERSON_UID_QUERY_PARAMETER_NAME => array_keys(
                     array_slice(
-                        $personsIdentifiersToPersonGroups,
+                        $personIdToPersonGroupsMaskMap,
                         $currentPersonIndex,
                         self::MAX_NUM_PERSON_UIDS_PER_REQUEST,
                         true
@@ -879,15 +906,34 @@ class PersonProvider extends AbstractAuthorizationService implements PersonProvi
                 maxNumItems: self::MAX_NUM_PERSON_UIDS_PER_REQUEST
             ) as $personClaimsResource) {
                 $cachedPersonStaging = null;
-                $personGroupsMask = 0;
-                if ($checkIfAlreadyAdded
-                    && ($cachedPersonStaging =
-                        $this->entityManager->getRepository(CachedPersonStaging::class)->find($personClaimsResource->getUid()))) {
-                    $personGroupsMask = $cachedPersonStaging->getPersonGroups();
+                // if persons are injected from outside, we check, if they have already been added (because they have accounts)
+                if ($haveAccounts === false) {
+                    $cachedPersonStaging =
+                        $this->entityManager->getRepository(CachedPersonStaging::class)->find($personClaimsResource->getUid());
                 }
                 $cachedPersonStaging ??= self::createCachedPersonStagingFromPersonClaimsResource($personClaimsResource);
-                $personGroupsMask |= $personsIdentifiersToPersonGroups[$personClaimsResource->getUid()]; // set or add groups
-                $cachedPersonStaging->setPersonGroups($personGroupsMask);
+                $personGroups = $personIdToPersonGroupsMaskMap[$personClaimsResource->getUid()];
+                // set or add person groups (and don't remove when persons has been added before)
+                if ($personGroups & self::EMPLOYEE_MASK
+                    && $cachedPersonStaging->getIsStaff() !== CachedPersonStaging::YES_WITH_ACCOUNT) {
+                    $cachedPersonStaging->setIsStaff($haveAccounts ?
+                        CachedPersonStaging::YES_WITH_ACCOUNT : CachedPersonStaging::YES_WITHOUT_ACCOUNT);
+                }
+                if ($personGroups & self::STUDENT_MASK
+                    && $cachedPersonStaging->getIsStudent() !== CachedPersonStaging::YES_WITH_ACCOUNT) {
+                    $cachedPersonStaging->setIsStudent($haveAccounts ?
+                        CachedPersonStaging::YES_WITH_ACCOUNT : CachedPersonStaging::YES_WITHOUT_ACCOUNT);
+                }
+                if ($personGroups & self::ALUMNI_MASK
+                    && $cachedPersonStaging->getIsAlumni() !== CachedPersonStaging::YES_WITH_ACCOUNT) {
+                    $cachedPersonStaging->setIsAlumni($haveAccounts ?
+                        CachedPersonStaging::YES_WITH_ACCOUNT : CachedPersonStaging::YES_WITHOUT_ACCOUNT);
+                }
+                if ($personGroups & self::EXTERNAL_MASK
+                    && $cachedPersonStaging->getIsExternal() !== CachedPersonStaging::YES_WITH_ACCOUNT) {
+                    $cachedPersonStaging->setIsExternal($haveAccounts ?
+                        CachedPersonStaging::YES_WITH_ACCOUNT : CachedPersonStaging::YES_WITHOUT_ACCOUNT);
+                }
                 $this->entityManager->persist($cachedPersonStaging);
             }
 

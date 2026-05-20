@@ -24,16 +24,19 @@ abstract class EntityManagerMigration extends AbstractEntityManagerMigration
         $this->addSql("DROP TABLE IF EXISTS $personsStagingTableName");
         $this->addSql("DROP TABLE IF EXISTS $personTableName");
 
-        $uidColumn = CachedPerson::UID_COLUMN_NAME;
-        $givenNameColumn = CachedPerson::GIVEN_NAME_COLUMN_NAME;
-        $surnameColumn = CachedPerson::SURNAME_COLUMN_NAME;
-        $dateOfBirthColumn = CachedPerson::DATE_OF_BIRTH_COLUMN_NAME;
-        $emailColumn = CachedPerson::EMAIL_COLUMN_NAME;
-        $matriculationNumberColumn = CachedPerson::MATRICULATION_NUMBER_COLUMN_NAME;
-        $titlePrefixColumn = CachedPerson::TITLE_PREFIX_COLUMN_NAME;
-        $titleSuffixColumn = CachedPerson::TITLE_SUFFIX_COLUMN_NAME;
-        $genderKeyColumn = CachedPerson::GENDER_KEY_COLUMN_NAME;
-        $personGroupsColumn = CachedPerson::PERSON_GROUPS_COLUMN_NAME;
+        $uidColumn = CachedPerson::UID;
+        $givenNameColumn = CachedPerson::GIVEN_NAME;
+        $surnameColumn = CachedPerson::SURNAME;
+        $dateOfBirthColumn = CachedPerson::DATE_OF_BIRTH;
+        $emailColumn = CachedPerson::EMAIL;
+        $matriculationNumberColumn = CachedPerson::MATRICULATION_NUMBER;
+        $titlePrefixColumn = CachedPerson::TITLE_PREFIX;
+        $titleSuffixColumn = CachedPerson::TITLE_SUFFIX;
+        $genderKeyColumn = CachedPerson::GENDER_KEY;
+        $isStaffColumn = CachedPerson::IS_STAFF;
+        $isStudentColumn = CachedPerson::IS_STUDENT;
+        $isAlumniColumn = CachedPerson::IS_ALUMNI;
+        $isExternalColumn = CachedPerson::IS_EXTERNAL;
 
         $createStatement = <<<STMT
                CREATE TABLE $personTableName (
@@ -46,7 +49,10 @@ abstract class EntityManagerMigration extends AbstractEntityManagerMigration
                    $titlePrefixColumn VARCHAR(128) NULL,
                    $titleSuffixColumn VARCHAR(128) NULL,
                    $genderKeyColumn VARCHAR(4) NULL,
-                   $personGroupsColumn INT NULL,
+                   $isStaffColumn SMALLINT DEFAULT 0 NOT NULL,
+                   $isStudentColumn SMALLINT DEFAULT 0 NOT NULL,
+                   $isAlumniColumn SMALLINT DEFAULT 0 NOT NULL,
+                   $isExternalColumn SMALLINT DEFAULT 0 NOT NULL,
                    PRIMARY KEY($uidColumn)
                ) DEFAULT CHARACTER SET utf8mb4 COLLATE `utf8mb4_unicode_ci` ENGINE = InnoDB;
             STMT;

@@ -6,49 +6,49 @@ namespace Dbp\Relay\BasePersonConnectorCampusonlineBundle\Tests;
 
 use ApiPlatform\Symfony\Bundle\Test\ApiTestCase;
 use Dbp\Relay\BasePersonBundle\Entity\Person;
-use Dbp\Relay\BasePersonConnectorCampusonlineBundle\Service\PersonProvider;
-use Dbp\Relay\BasePersonConnectorCampusonlineBundle\TestUtils\TestPersonProviderFactory;
+use Dbp\Relay\BasePersonConnectorCampusonlineBundle\Entity\CachedPerson;
+use Dbp\Relay\BasePersonConnectorCampusonlineBundle\TestUtils\TestPersonProvider;
 use Dbp\Relay\CoreBundle\Rest\Options;
-use Dbp\Relay\CoreBundle\TestUtils\TestAuthorizationService;
 
 /**
  * TODO: add more persons to responses for reasonable pagination, search and filter tests.
  */
 class PersonProviderTest extends ApiTestCase
 {
-    private const STAFF_USER_IDENTIFIER = TestPersonProviderFactory::STAFF_USER_IDENTIFIER;
-    private const STUDENT_USER_IDENTIFIER = TestPersonProviderFactory::STUDENT_USER_IDENTIFIER;
-    private const ALUMNUS_USER_IDENTIFIER = TestPersonProviderFactory::ALUMNUS_USER_IDENTIFIER;
+    private const STAFF_USER_IDENTIFIER = TestPersonProvider::STAFF_USER_IDENTIFIER;
+    private const STUDENT_USER_IDENTIFIER = TestPersonProvider::STUDENT_USER_IDENTIFIER;
+    private const ALUMNUS_USER_IDENTIFIER = TestPersonProvider::ALUMNUS_USER_IDENTIFIER;
 
-    private const EMAIL_ATTRIBUTE = TestPersonProviderFactory::EMAIL_ATTRIBUTE;
-    private const EMPLOYEE_POSTAL_ADDRESS_ATTRIBUTE = TestPersonProviderFactory::EMPLOYEE_POSTAL_ADDRESS_ATTRIBUTE;
-    private const EMPLOYEE_WORK_ADDRESS_ATTRIBUTE = TestPersonProviderFactory::EMPLOYEE_WORK_ADDRESS_ATTRIBUTE;
-    private const USERNAME_ATTRIBUTE = TestPersonProviderFactory::USERNAME_ATTRIBUTE;
+    private const EMAIL_ATTRIBUTE = TestPersonProvider::EMAIL_ATTRIBUTE;
+    private const EMPLOYEE_POSTAL_ADDRESS_ATTRIBUTE = TestPersonProvider::EMPLOYEE_POSTAL_ADDRESS_ATTRIBUTE;
+    private const EMPLOYEE_WORK_ADDRESS_ATTRIBUTE = TestPersonProvider::EMPLOYEE_WORK_ADDRESS_ATTRIBUTE;
+    private const USERNAME_ATTRIBUTE = TestPersonProvider::USERNAME_ATTRIBUTE;
 
-    private ?PersonProvider $personProvider = null;
+    private ?TestPersonProvider $testPersonProvider = null;
 
     protected function setUp(): void
     {
         parent::setUp();
 
-        $this->personProvider = TestPersonProviderFactory::createTestPersonProvider(
+        $this->testPersonProvider = TestPersonProvider::createTestPersonProvider(
             self::bootKernel()->getContainer()
         );
-        $this->login();
+
+        $this->login(self::STAFF_USER_IDENTIFIER);
     }
 
     public function testGetCurrentPersonIdentifier(): void
     {
-        $this->assertSame(self::STAFF_USER_IDENTIFIER, $this->personProvider->getCurrentPersonIdentifier());
+        $this->assertSame(self::STAFF_USER_IDENTIFIER, $this->testPersonProvider->getCurrentPersonIdentifier());
     }
 
     public function testGetCurrentPerson(): void
     {
-        $currentPerson1 = $this->personProvider->getCurrentPerson();
+        $currentPerson1 = $this->testPersonProvider->getCurrentPerson();
         $this->assertSame(self::STAFF_USER_IDENTIFIER, $currentPerson1->getIdentifier());
         $this->assertNull($currentPerson1->getLocalData());
 
-        $currentPerson2 = $this->personProvider->getCurrentPerson();
+        $currentPerson2 = $this->testPersonProvider->getCurrentPerson();
         $this->assertSame(self::STAFF_USER_IDENTIFIER, $currentPerson2->getIdentifier());
         $this->assertNull($currentPerson2->getLocalData());
         $this->assertSame($currentPerson1, $currentPerson2);
@@ -56,17 +56,17 @@ class PersonProviderTest extends ApiTestCase
         // same request, but with local data requested
         $options = [];
         Options::requestLocalDataAttributes($options, [self::EMAIL_ATTRIBUTE]);
-        $currentPerson3 = $this->personProvider->getCurrentPerson($options);
+        $currentPerson3 = $this->testPersonProvider->getCurrentPerson($options);
         $this->assertSame(self::STAFF_USER_IDENTIFIER, $currentPerson3->getIdentifier());
         $this->assertCount(1, $currentPerson3->getLocalData());
         $this->assertSame('eleanora.quill@someuni.example', $currentPerson3->getLocalData()[self::EMAIL_ATTRIBUTE]);
         $this->assertNotSame($currentPerson1, $currentPerson3);
 
         // same request, but with different local data requested
-        TestPersonProviderFactory::mockPersonClaimsApiResponse($this->personProvider); // getting employee address should trigger a new api request
+        $this->testPersonProvider->mockPersonClaimsApiResponse(); // getting employee address should trigger a new api request
         $options = [];
         Options::requestLocalDataAttributes($options, [self::EMPLOYEE_POSTAL_ADDRESS_ATTRIBUTE]);
-        $currentPerson4 = $this->personProvider->getCurrentPerson($options);
+        $currentPerson4 = $this->testPersonProvider->getCurrentPerson($options);
         $this->assertCount(1, $currentPerson4->getLocalData());
         $address = $currentPerson4->getLocalData()[self::EMPLOYEE_POSTAL_ADDRESS_ATTRIBUTE];
         $this->assertEquals('Graz', $address['city']);
@@ -79,11 +79,11 @@ class PersonProviderTest extends ApiTestCase
 
     public function testGetCurrentPersonWithLocalData(): void
     {
-        TestPersonProviderFactory::mockPersonClaimsApiResponse($this->personProvider); // getting employee address should trigger a new api request
+        $this->testPersonProvider->mockPersonClaimsApiResponse(); // getting employee address should trigger a new api request
 
         $options = [];
         Options::requestLocalDataAttributes($options, [self::EMAIL_ATTRIBUTE, self::EMPLOYEE_POSTAL_ADDRESS_ATTRIBUTE]);
-        $currentPerson1 = $this->personProvider->getCurrentPerson($options);
+        $currentPerson1 = $this->testPersonProvider->getCurrentPerson($options);
         $this->assertCount(2, $currentPerson1->getLocalData());
         $this->assertSame('eleanora.quill@someuni.example', $currentPerson1->getLocalData()[self::EMAIL_ATTRIBUTE]);
 
@@ -95,7 +95,7 @@ class PersonProviderTest extends ApiTestCase
         $this->assertEquals('PA', $address['addressTypeKey']);
 
         // same local data attributes -> same instance should be returned and no new api request should be made
-        $currentPerson2 = $this->personProvider->getCurrentPerson($options);
+        $currentPerson2 = $this->testPersonProvider->getCurrentPerson($options);
         $this->assertCount(2, $currentPerson2->getLocalData());
         $this->assertSame($currentPerson1, $currentPerson2);
     }
@@ -103,21 +103,29 @@ class PersonProviderTest extends ApiTestCase
     public function testGetCurrentPersonNotFound(): void
     {
         $this->login('non-existing-user');
-        $this->assertNull($this->personProvider->getCurrentPerson());
+        $this->assertNull($this->testPersonProvider->getCurrentPerson());
     }
 
     public function testGetPerson(): void
     {
-        $person = $this->personProvider->getPerson(self::STAFF_USER_IDENTIFIER);
+        $person = $this->testPersonProvider->getPerson(self::STAFF_USER_IDENTIFIER);
         $this->assertSame(self::STAFF_USER_IDENTIFIER, $person->getIdentifier());
         $this->assertNull($person->getLocalData());
+    }
+
+    public function testGetExternalPerson(): void
+    {
+        $person = $this->testPersonProvider->getPerson(TestPersonProvider::EXTERNAL_USER_IDENTIFIER);
+        $this->assertEquals(TestPersonProvider::EXTERNAL_USER_IDENTIFIER, $person->getIdentifier());
+        $this->assertEquals('External', $person->getGivenName());
+        $this->assertEquals('Person', $person->getFamilyName());
     }
 
     public function testGetPersonWithLocalData(): void
     {
         $options = [];
         Options::requestLocalDataAttributes($options, [self::EMAIL_ATTRIBUTE]);
-        $person = $this->personProvider->getPerson(self::STAFF_USER_IDENTIFIER, $options);
+        $person = $this->testPersonProvider->getPerson(self::STAFF_USER_IDENTIFIER, $options);
         $this->assertSame(self::STAFF_USER_IDENTIFIER, $person->getIdentifier());
         $this->assertCount(1, $person->getLocalData());
         $this->assertSame('eleanora.quill@someuni.example', $person->getLocalData()[self::EMAIL_ATTRIBUTE]);
@@ -126,14 +134,14 @@ class PersonProviderTest extends ApiTestCase
     public function testGetPersonWithLocalDataNewPersonClaimsApiRequest(): void
     {
         // getting employee address should trigger a new person api request
-        TestPersonProviderFactory::mockPersonClaimsApiResponse($this->personProvider);
+        $this->testPersonProvider->mockPersonClaimsApiResponse();
 
         $options = [];
         Options::requestLocalDataAttributes($options, [
             self::EMAIL_ATTRIBUTE,
             self::EMPLOYEE_POSTAL_ADDRESS_ATTRIBUTE,
             self::EMPLOYEE_WORK_ADDRESS_ATTRIBUTE]);
-        $person = $this->personProvider->getPerson(self::STAFF_USER_IDENTIFIER, $options);
+        $person = $this->testPersonProvider->getPerson(self::STAFF_USER_IDENTIFIER, $options);
         $this->assertCount(3, $person->getLocalData());
         $this->assertSame('eleanora.quill@someuni.example', $person->getLocalData()[self::EMAIL_ATTRIBUTE]);
 
@@ -158,13 +166,13 @@ class PersonProviderTest extends ApiTestCase
     {
         // getting employee address should trigger a new person api request
         // -> however, the person is not found anymore and thus the address cannot be retrieved
-        TestPersonProviderFactory::mockEmptyApiResponse($this->personProvider);
+        $this->testPersonProvider->mockEmptyApiResponse();
 
         $options = [];
         Options::requestLocalDataAttributes($options, [
             self::EMAIL_ATTRIBUTE,
             self::EMPLOYEE_POSTAL_ADDRESS_ATTRIBUTE]);
-        $person = $this->personProvider->getPerson(self::STAFF_USER_IDENTIFIER, $options);
+        $person = $this->testPersonProvider->getPerson(self::STAFF_USER_IDENTIFIER, $options);
         $this->assertCount(2, $person->getLocalData());
         $this->assertSame('eleanora.quill@someuni.example', $person->getLocalData()[self::EMAIL_ATTRIBUTE]);
         $this->assertNull($person->getLocalData()[self::EMPLOYEE_POSTAL_ADDRESS_ATTRIBUTE]);
@@ -173,13 +181,13 @@ class PersonProviderTest extends ApiTestCase
     public function testGetPersonWithLocalDataNewUserApiRequest(): void
     {
         // getting username should trigger a new user api request
-        TestPersonProviderFactory::mockUserApiResponse($this->personProvider);
+        $this->testPersonProvider->mockUserApiResponse();
 
         $options = [];
         Options::requestLocalDataAttributes($options, [
             self::USERNAME_ATTRIBUTE,
         ]);
-        $person = $this->personProvider->getPerson(self::STAFF_USER_IDENTIFIER, $options);
+        $person = $this->testPersonProvider->getPerson(self::STAFF_USER_IDENTIFIER, $options);
         $this->assertCount(1, $person->getLocalData());
         $this->assertSame('maxm', $person->getLocalData()[self::USERNAME_ATTRIBUTE]);
     }
@@ -188,13 +196,13 @@ class PersonProviderTest extends ApiTestCase
     {
         // getting username should trigger a new user api request
         // however, the user is not found (anymore) and thus the username cannot be retrieved
-        TestPersonProviderFactory::mockEmptyApiResponse($this->personProvider);
+        $this->testPersonProvider->mockEmptyApiResponse();
 
         $options = [];
         Options::requestLocalDataAttributes($options, [
             self::USERNAME_ATTRIBUTE,
         ]);
-        $person = $this->personProvider->getPerson(self::STAFF_USER_IDENTIFIER, $options);
+        $person = $this->testPersonProvider->getPerson(self::STAFF_USER_IDENTIFIER, $options);
         $this->assertCount(1, $person->getLocalData());
         $this->assertNull($person->getLocalData()[self::USERNAME_ATTRIBUTE]);
     }
@@ -202,9 +210,9 @@ class PersonProviderTest extends ApiTestCase
     public function testGetPersonWithLocalDataNewUserApiAndPersonClaimsApiRequest(): void
     {
         // getting username/address should trigger a new user/person claims api request
-        TestPersonProviderFactory::mockApiResponses($this->personProvider, [
-            new \GuzzleHttp\Psr7\Response(200, ['Content-Type' => 'application/json'], TestPersonProviderFactory::getPersonClaimsApiTestResponse()),
-            new \GuzzleHttp\Psr7\Response(200, ['Content-Type' => 'application/json'], TestPersonProviderFactory::getUserApiTestResponse()),
+        $this->testPersonProvider->mockApiResponses([
+            new \GuzzleHttp\Psr7\Response(200, ['Content-Type' => 'application/json'], $this->testPersonProvider->getPersonClaimsApiTestResponse()),
+            new \GuzzleHttp\Psr7\Response(200, ['Content-Type' => 'application/json'], $this->testPersonProvider->getUserApiTestResponse()),
         ]);
 
         $options = [];
@@ -212,7 +220,7 @@ class PersonProviderTest extends ApiTestCase
             self::EMPLOYEE_POSTAL_ADDRESS_ATTRIBUTE,
             self::USERNAME_ATTRIBUTE,
         ]);
-        $person = $this->personProvider->getPerson(self::STAFF_USER_IDENTIFIER, $options);
+        $person = $this->testPersonProvider->getPerson(self::STAFF_USER_IDENTIFIER, $options);
         $this->assertCount(2, $person->getLocalData());
         $this->assertSame('maxm', $person->getLocalData()[self::USERNAME_ATTRIBUTE]);
         $address = $person->getLocalData()[self::EMPLOYEE_POSTAL_ADDRESS_ATTRIBUTE];
@@ -225,8 +233,8 @@ class PersonProviderTest extends ApiTestCase
 
     public function testGetPersons(): void
     {
-        $persons = $this->personProvider->getPersons(1, 10);
-        $this->assertCount(3, $persons);
+        $persons = $this->testPersonProvider->getPersons(1, 10);
+        $this->assertCount(4, $persons);
         $this->assertTrue(self::containsExactlyOneWhere(
             $persons,
             fn (Person $person) => self::STAFF_USER_IDENTIFIER === $person->getIdentifier()
@@ -234,7 +242,6 @@ class PersonProviderTest extends ApiTestCase
                 && 'Quill-Weatherby' === $person->getFamilyName()
                 && null === $person->getLocalData()
         ));
-
         $this->assertTrue(self::containsExactlyOneWhere(
             $persons,
             fn (Person $person) => 'student-id' === $person->getIdentifier()
@@ -242,26 +249,32 @@ class PersonProviderTest extends ApiTestCase
                 && 'Pérez-Altamirano' === $person->getFamilyName()
                 && null === $person->getLocalData()
         ));
-
         $this->assertTrue(self::containsExactlyOneWhere(
             $persons,
             fn (Person $person) => 'alumnus-id' === $person->getIdentifier()
                 && 'Aksel' === $person->getGivenName()
                 && 'Østergaard' === $person->getFamilyName()
+                && null === $person->getLocalData()
+        ));
+        $this->assertTrue(self::containsExactlyOneWhere(
+            $persons,
+            fn (Person $person) => TestPersonProvider::EXTERNAL_USER_IDENTIFIER === $person->getIdentifier()
+                && 'External' === $person->getGivenName()
+                && 'Person' === $person->getFamilyName()
                 && null === $person->getLocalData()
         ));
     }
 
     public function testGetPersonsPagination(): void
     {
-        $personPage1 = $this->personProvider->getPersons(1, 2);
-        $this->assertCount(2, $personPage1);
+        $personPage1 = $this->testPersonProvider->getPersons(1, 3);
+        $this->assertCount(3, $personPage1);
 
-        $personPage2 = $this->personProvider->getPersons(2, 2);
+        $personPage2 = $this->testPersonProvider->getPersons(2, 3);
         $this->assertCount(1, $personPage2);
 
         $persons = array_merge($personPage1, $personPage2);
-        $this->assertCount(3, $persons);
+        $this->assertCount(4, $persons);
         $this->assertTrue(self::containsExactlyOneWhere(
             $persons,
             fn (Person $person) => self::STAFF_USER_IDENTIFIER === $person->getIdentifier()
@@ -269,7 +282,6 @@ class PersonProviderTest extends ApiTestCase
                 && 'Quill-Weatherby' === $person->getFamilyName()
                 && null === $person->getLocalData()
         ));
-
         $this->assertTrue(self::containsExactlyOneWhere(
             $persons,
             fn (Person $person) => 'student-id' === $person->getIdentifier()
@@ -277,12 +289,18 @@ class PersonProviderTest extends ApiTestCase
                 && 'Pérez-Altamirano' === $person->getFamilyName()
                 && null === $person->getLocalData()
         ));
-
         $this->assertTrue(self::containsExactlyOneWhere(
             $persons,
             fn (Person $person) => 'alumnus-id' === $person->getIdentifier()
                 && 'Aksel' === $person->getGivenName()
                 && 'Østergaard' === $person->getFamilyName()
+                && null === $person->getLocalData()
+        ));
+        $this->assertTrue(self::containsExactlyOneWhere(
+            $persons,
+            fn (Person $person) => TestPersonProvider::EXTERNAL_USER_IDENTIFIER === $person->getIdentifier()
+                && 'External' === $person->getGivenName()
+                && 'Person' === $person->getFamilyName()
                 && null === $person->getLocalData()
         ));
     }
@@ -291,8 +309,8 @@ class PersonProviderTest extends ApiTestCase
     {
         $options = [];
         Options::requestLocalDataAttributes($options, [self::EMAIL_ATTRIBUTE]);
-        $persons = $this->personProvider->getPersons(1, 10, $options);
-        $this->assertCount(3, $persons);
+        $persons = $this->testPersonProvider->getPersons(1, 10, $options);
+        $this->assertCount(4, $persons);
         $this->assertTrue(
             self::containsExactlyOneWhere(
                 $persons,
@@ -320,20 +338,29 @@ class PersonProviderTest extends ApiTestCase
                     && 'aksel.ostergaard@alumni.someuni.at' === $person->getLocalData()[self::EMAIL_ATTRIBUTE]
             )
         );
+        $this->assertTrue(
+            self::containsExactlyOneWhere(
+                $persons,
+                fn (Person $person) => TestPersonProvider::EXTERNAL_USER_IDENTIFIER === $person->getIdentifier()
+                    && 'External' === $person->getGivenName()
+                    && 'Person' === $person->getFamilyName()
+                    && 'external@person.com' === $person->getLocalData()[self::EMAIL_ATTRIBUTE]
+            )
+        );
     }
 
     public function testGetPersonsWithLocalDataNewPersonClaimsApiRequest(): void
     {
         // getting employee address should trigger a new api request
-        TestPersonProviderFactory::mockPersonClaimsApiResponse($this->personProvider);
+        $this->testPersonProvider->mockPersonClaimsApiResponse();
 
         $options = [];
         Options::requestLocalDataAttributes($options, [
             self::EMAIL_ATTRIBUTE,
             self::EMPLOYEE_POSTAL_ADDRESS_ATTRIBUTE,
             self::EMPLOYEE_WORK_ADDRESS_ATTRIBUTE]);
-        $persons = $this->personProvider->getPersons(1, 10, $options);
-        $this->assertCount(3, $persons);
+        $persons = $this->testPersonProvider->getPersons(1, 10, $options);
+        $this->assertCount(4, $persons);
         $this->assertTrue(
             self::containsExactlyOneWhere(
                 $persons,
@@ -355,7 +382,6 @@ class PersonProviderTest extends ApiTestCase
                     && '37' === $person->getLocalData()[self::EMPLOYEE_WORK_ADDRESS_ATTRIBUTE]['contactOrganizationIdentifier']
             )
         );
-
         $this->assertTrue(
             self::containsExactlyOneWhere(
                 $persons,
@@ -378,21 +404,32 @@ class PersonProviderTest extends ApiTestCase
                     && null === $person->getLocalData()[self::EMPLOYEE_WORK_ADDRESS_ATTRIBUTE]
             )
         );
+        $this->assertTrue(
+            self::containsExactlyOneWhere(
+                $persons,
+                fn (Person $person) => TestPersonProvider::EXTERNAL_USER_IDENTIFIER === $person->getIdentifier()
+                    && 'External' === $person->getGivenName()
+                    && 'Person' === $person->getFamilyName()
+                    && 'external@person.com' === $person->getLocalData()[self::EMAIL_ATTRIBUTE]
+                    && null === $person->getLocalData()[self::EMPLOYEE_POSTAL_ADDRESS_ATTRIBUTE]
+                    && null === $person->getLocalData()[self::EMPLOYEE_WORK_ADDRESS_ATTRIBUTE]
+            )
+        );
     }
 
     public function testGetPersonsWithLocalDataNewPersonClaimsApiRequestNotFound(): void
     {
         // getting employee address should trigger a new api request
         // however, the persons are not found anymore and thus the address cannot be retrieved
-        TestPersonProviderFactory::mockEmptyApiResponse($this->personProvider);
+        $this->testPersonProvider->mockEmptyApiResponse();
 
         $options = [];
         Options::requestLocalDataAttributes($options, [
             self::EMAIL_ATTRIBUTE,
             self::EMPLOYEE_POSTAL_ADDRESS_ATTRIBUTE,
         ]);
-        $persons = $this->personProvider->getPersons(1, 10, $options);
-        $this->assertCount(3, $persons);
+        $persons = $this->testPersonProvider->getPersons(1, 10, $options);
+        $this->assertCount(4, $persons);
         $this->assertTrue(
             self::containsExactlyOneWhere(
                 $persons,
@@ -423,19 +460,29 @@ class PersonProviderTest extends ApiTestCase
                     && null === $person->getLocalData()[self::EMPLOYEE_POSTAL_ADDRESS_ATTRIBUTE]
             )
         );
+        $this->assertTrue(
+            self::containsExactlyOneWhere(
+                $persons,
+                fn (Person $person) => TestPersonProvider::EXTERNAL_USER_IDENTIFIER === $person->getIdentifier()
+                    && 'External' === $person->getGivenName()
+                    && 'Person' === $person->getFamilyName()
+                    && 'external@person.com' === $person->getLocalData()[self::EMAIL_ATTRIBUTE]
+                    && null === $person->getLocalData()[self::EMPLOYEE_POSTAL_ADDRESS_ATTRIBUTE]
+            )
+        );
     }
 
     public function testGetPersonsWithLocalDataNewUserApiRequest(): void
     {
         // getting username should trigger a new user api request
-        TestPersonProviderFactory::mockUserApiResponse($this->personProvider);
+        $this->testPersonProvider->mockUserApiResponse();
 
         $options = [];
         Options::requestLocalDataAttributes($options, [
             self::USERNAME_ATTRIBUTE,
         ]);
-        $persons = $this->personProvider->getPersons(1, 30, $options);
-        $this->assertCount(3, $persons);
+        $persons = $this->testPersonProvider->getPersons(1, 30, $options);
+        $this->assertCount(4, $persons);
         $this->assertTrue(self::containsExactlyOneWhere(
             $persons,
             fn (Person $person) => self::STAFF_USER_IDENTIFIER === $person->getIdentifier()
@@ -460,19 +507,27 @@ class PersonProviderTest extends ApiTestCase
                 && 1 === count($person->getLocalData())
                 && 'maxa' === $person->getLocalData()[self::USERNAME_ATTRIBUTE]
         ));
+        $this->assertTrue(self::containsExactlyOneWhere(
+            $persons,
+            fn (Person $person) => TestPersonProvider::EXTERNAL_USER_IDENTIFIER === $person->getIdentifier()
+                && 'External' === $person->getGivenName()
+                && 'Person' === $person->getFamilyName()
+                && 1 === count($person->getLocalData())
+                && null === $person->getLocalData()[self::USERNAME_ATTRIBUTE]
+        ));
     }
 
     public function testGetPersonsWithLocalDataNewUserApiRequestNotFound(): void
     {
         // getting username should trigger a new user api request
-        TestPersonProviderFactory::mockEmptyApiResponse($this->personProvider);
+        $this->testPersonProvider->mockEmptyApiResponse();
 
         $options = [];
         Options::requestLocalDataAttributes($options, [
             self::USERNAME_ATTRIBUTE,
         ]);
-        $persons = $this->personProvider->getPersons(1, 30, $options);
-        $this->assertCount(3, $persons);
+        $persons = $this->testPersonProvider->getPersons(1, 30, $options);
+        $this->assertCount(4, $persons);
         $this->assertTrue(self::containsExactlyOneWhere(
             $persons,
             fn (Person $person) => self::STAFF_USER_IDENTIFIER === $person->getIdentifier()
@@ -497,14 +552,21 @@ class PersonProviderTest extends ApiTestCase
                 && 1 === count($person->getLocalData())
                 && null === $person->getLocalData()[self::USERNAME_ATTRIBUTE]
         ));
+        $this->assertTrue(self::containsExactlyOneWhere(
+            $persons,
+            fn (Person $person) => TestPersonProvider::EXTERNAL_USER_IDENTIFIER === $person->getIdentifier()
+                && 'External' === $person->getGivenName()
+                && 'Person' === $person->getFamilyName()
+                && null === $person->getLocalData()[self::USERNAME_ATTRIBUTE]
+        ));
     }
 
     public function testGetPersonsWithLocalDataNewUserApiAndPersonClaimsApiRequest(): void
     {
         // getting username/address should trigger a new user/person claims api request
-        TestPersonProviderFactory::mockApiResponses($this->personProvider, [
-            new \GuzzleHttp\Psr7\Response(200, ['Content-Type' => 'application/json'], TestPersonProviderFactory::getPersonClaimsApiTestResponse()),
-            new \GuzzleHttp\Psr7\Response(200, ['Content-Type' => 'application/json'], TestPersonProviderFactory::getUserApiTestResponse()),
+        $this->testPersonProvider->mockApiResponses([
+            new \GuzzleHttp\Psr7\Response(200, ['Content-Type' => 'application/json'], $this->testPersonProvider->getPersonClaimsApiTestResponse()),
+            new \GuzzleHttp\Psr7\Response(200, ['Content-Type' => 'application/json'], $this->testPersonProvider->getUserApiTestResponse()),
         ]);
 
         $options = [];
@@ -512,8 +574,8 @@ class PersonProviderTest extends ApiTestCase
             self::EMPLOYEE_POSTAL_ADDRESS_ATTRIBUTE,
             self::USERNAME_ATTRIBUTE,
         ]);
-        $persons = $this->personProvider->getPersons(1, 30, $options);
-        $this->assertCount(3, $persons);
+        $persons = $this->testPersonProvider->getPersons(1, 30, $options);
+        $this->assertCount(4, $persons);
         $this->assertTrue(self::containsExactlyOneWhere(
             $persons,
             fn (Person $person) => self::STAFF_USER_IDENTIFIER === $person->getIdentifier()
@@ -545,6 +607,16 @@ class PersonProviderTest extends ApiTestCase
                 && 'maxa' === $person->getLocalData()[self::USERNAME_ATTRIBUTE]
                 && null === $person->getLocalData()[self::EMPLOYEE_POSTAL_ADDRESS_ATTRIBUTE]
         ));
+        $this->assertTrue(
+            self::containsExactlyOneWhere(
+                $persons,
+                fn (Person $person) => TestPersonProvider::EXTERNAL_USER_IDENTIFIER === $person->getIdentifier()
+                    && 'External' === $person->getGivenName()
+                    && 'Person' === $person->getFamilyName()
+                    && null === $person->getLocalData()[self::USERNAME_ATTRIBUTE]
+                    && null === $person->getLocalData()[self::EMPLOYEE_POSTAL_ADDRESS_ATTRIBUTE]
+            )
+        );
     }
 
     public function testGetPersonsWithSearchParameter(): void
@@ -552,7 +624,7 @@ class PersonProviderTest extends ApiTestCase
         $options = [
             Person::SEARCH_PARAMETER_NAME => 'altamir',
         ];
-        $persons = $this->personProvider->getPersons(1, 10, $options);
+        $persons = $this->testPersonProvider->getPersons(1, 10, $options);
         $this->assertCount(1, $persons);
         $person = $persons[0];
         $this->assertSame(self::STUDENT_USER_IDENTIFIER, $person->getIdentifier());
@@ -560,7 +632,7 @@ class PersonProviderTest extends ApiTestCase
         $options = [
             Person::SEARCH_PARAMETER_NAME => 'altamir luna',
         ];
-        $persons = $this->personProvider->getPersons(1, 10, $options);
+        $persons = $this->testPersonProvider->getPersons(1, 10, $options);
         $this->assertCount(1, $persons);
         $person = $persons[0];
         $this->assertSame(self::STUDENT_USER_IDENTIFIER, $person->getIdentifier());
@@ -568,130 +640,131 @@ class PersonProviderTest extends ApiTestCase
         $options = [
             Person::SEARCH_PARAMETER_NAME => 'alamir foo',
         ];
-        $persons = $this->personProvider->getPersons(1, 10, $options);
+        $persons = $this->testPersonProvider->getPersons(1, 10, $options);
         $this->assertCount(0, $persons);
 
         $options = [
             Person::SEARCH_PARAMETER_NAME => 'foo',
         ];
-        $persons = $this->personProvider->getPersons(1, 10, $options);
+        $persons = $this->testPersonProvider->getPersons(1, 10, $options);
         $this->assertCount(0, $persons);
     }
 
     public function testGetPersonIdentifierByUsername(): void
     {
-        TestPersonProviderFactory::mockUserApiResponse($this->personProvider);
+        $this->testPersonProvider->mockUserApiResponse();
 
-        $personIdentifier = $this->personProvider->getPersonIdentifierByUsername('maxm');
+        $personIdentifier = $this->testPersonProvider->getPersonIdentifierByUsername('maxm');
         $this->assertEquals('staff-id', $personIdentifier);
 
-        TestPersonProviderFactory::mockEmptyApiResponse($this->personProvider);
+        $this->testPersonProvider->mockEmptyApiResponse();
 
-        $this->assertNull($this->personProvider->getPersonIdentifierByUsername('foo'));
+        $this->assertNull($this->testPersonProvider->getPersonIdentifierByUsername('foo'));
     }
 
     public function testGetPersonIdentifierByEmail(): void
     {
-        TestPersonProviderFactory::mockUserApiResponse($this->personProvider);
+        $this->testPersonProvider->mockUserApiResponse();
 
-        $personIdentifier = $this->personProvider->getPersonIdentifierByEmail('eleanora.quill@someuni.example');
+        $personIdentifier = $this->testPersonProvider->getPersonIdentifierByEmail('eleanora.quill@someuni.example');
         $this->assertEquals('staff-id', $personIdentifier);
 
-        TestPersonProviderFactory::mockEmptyApiResponse($this->personProvider);
+        $this->testPersonProvider->mockEmptyApiResponse();
 
-        $this->assertNull($this->personProvider->getPersonIdentifierByEmail('foo'));
+        $this->assertNull($this->testPersonProvider->getPersonIdentifierByEmail('foo'));
     }
 
     public function testGetCurrentResultPersonIdentifiersItem(): void
     {
-        $this->personProvider->getPerson(self::STAFF_USER_IDENTIFIER);
+        $this->testPersonProvider->getPerson(self::STAFF_USER_IDENTIFIER);
 
-        $identifiers = $this->personProvider->getCurrentResultPersonIdentifiers();
+        $identifiers = $this->testPersonProvider->getCurrentResultPersonIdentifiers();
         $this->assertCount(1, $identifiers);
         $this->assertContains(self::STAFF_USER_IDENTIFIER, $identifiers);
     }
 
     public function testGetCurrentResultPersonIdentifiersCollection(): void
     {
-        $this->personProvider->getPersons(1, 10); // caches the person ids of current request result
+        $this->testPersonProvider->getPersons(1, 10); // caches the person ids of current request result
 
-        $identifiers = $this->personProvider->getCurrentResultPersonIdentifiers();
-        $this->assertCount(3, $identifiers);
+        $identifiers = $this->testPersonProvider->getCurrentResultPersonIdentifiers();
+        $this->assertCount(4, $identifiers);
         $this->assertContains(self::STAFF_USER_IDENTIFIER, $identifiers);
         $this->assertContains(self::STUDENT_USER_IDENTIFIER, $identifiers);
         $this->assertContains(self::ALUMNUS_USER_IDENTIFIER, $identifiers);
+        $this->assertContains(TestPersonProvider::EXTERNAL_USER_IDENTIFIER, $identifiers);
     }
 
     public function testGetPersonClaimsResourceFromApiCached(): void
     {
-        TestPersonProviderFactory::mockPersonClaimsApiResponse($this->personProvider);
+        $this->testPersonProvider->mockPersonClaimsApiResponse();
 
-        $personClaims = $this->personProvider->getPersonClaimsResourceFromApiCached(self::STAFF_USER_IDENTIFIER);
+        $personClaims = $this->testPersonProvider->getPersonClaimsResourceFromApiCached(self::STAFF_USER_IDENTIFIER);
         $this->assertSame(self::STAFF_USER_IDENTIFIER, $personClaims->getUid());
         $this->assertSame('eleanora.quill@someuni.example', $personClaims->getEmail());
 
         // NOTE: no more requests must be made
-        $personClaims = $this->personProvider->getPersonClaimsResourceFromApiCached(self::STAFF_USER_IDENTIFIER);
+        $personClaims = $this->testPersonProvider->getPersonClaimsResourceFromApiCached(self::STAFF_USER_IDENTIFIER);
         $this->assertSame(self::STAFF_USER_IDENTIFIER, $personClaims->getUid());
         $this->assertSame('eleanora.quill@someuni.example', $personClaims->getEmail());
     }
 
     public function testGetPersonClaimsResourceFromApiCachedNotFound(): void
     {
-        TestPersonProviderFactory::mockEmptyApiResponse($this->personProvider);
+        $this->testPersonProvider->mockEmptyApiResponse();
 
-        $this->assertNull($this->personProvider->getPersonClaimsResourceFromApiCached('foo'));
+        $this->assertNull($this->testPersonProvider->getPersonClaimsResourceFromApiCached('foo'));
         // NOTE: no more requests must be made
-        $this->assertNull($this->personProvider->getPersonClaimsResourceFromApiCached('foo'));
+        $this->assertNull($this->testPersonProvider->getPersonClaimsResourceFromApiCached('foo'));
     }
 
     public function testGetPersonClaimsResourceFromApiCachedAfterGetPerson(): void
     {
-        $this->personProvider->getPerson(self::STAFF_USER_IDENTIFIER);
+        $this->testPersonProvider->getPerson(self::STAFF_USER_IDENTIFIER);
 
-        TestPersonProviderFactory::mockPersonClaimsApiResponse($this->personProvider);
+        $this->testPersonProvider->mockPersonClaimsApiResponse();
 
-        $personClaims = $this->personProvider->getPersonClaimsResourceFromApiCached(self::STAFF_USER_IDENTIFIER);
+        $personClaims = $this->testPersonProvider->getPersonClaimsResourceFromApiCached(self::STAFF_USER_IDENTIFIER);
         $this->assertSame(self::STAFF_USER_IDENTIFIER, $personClaims->getUid());
         $this->assertSame('eleanora.quill@someuni.example', $personClaims->getEmail());
 
         // NOTE: no more requests must be made
-        $personClaims = $this->personProvider->getPersonClaimsResourceFromApiCached(self::STAFF_USER_IDENTIFIER);
+        $personClaims = $this->testPersonProvider->getPersonClaimsResourceFromApiCached(self::STAFF_USER_IDENTIFIER);
         $this->assertSame(self::STAFF_USER_IDENTIFIER, $personClaims->getUid());
         $this->assertSame('eleanora.quill@someuni.example', $personClaims->getEmail());
     }
 
     public function testGetPersonClaimsResourceFromApiCachedAfterGetPersons(): void
     {
-        $this->personProvider->getPersons(1, 10); // caches the person ids of current request result
+        $this->testPersonProvider->getPersons(1, 10); // caches the person ids of current request result
 
-        TestPersonProviderFactory::mockPersonClaimsApiResponse($this->personProvider);
+        $this->testPersonProvider->mockPersonClaimsApiResponse();
 
-        $personClaims = $this->personProvider->getPersonClaimsResourceFromApiCached(self::STAFF_USER_IDENTIFIER);
+        $personClaims = $this->testPersonProvider->getPersonClaimsResourceFromApiCached(self::STAFF_USER_IDENTIFIER);
         $this->assertSame(self::STAFF_USER_IDENTIFIER, $personClaims->getUid());
         $this->assertSame('eleanora.quill@someuni.example', $personClaims->getEmail());
 
         // NOTE: no more requests must be made
-        $personClaims = $this->personProvider->getPersonClaimsResourceFromApiCached(self::STUDENT_USER_IDENTIFIER);
+        $personClaims = $this->testPersonProvider->getPersonClaimsResourceFromApiCached(self::STUDENT_USER_IDENTIFIER);
         $this->assertSame(self::STUDENT_USER_IDENTIFIER, $personClaims->getUid());
         $this->assertSame('luna.perez@someuni.edu', $personClaims->getEmail());
 
-        $user = $this->personProvider->getPersonClaimsResourceFromApiCached(self::ALUMNUS_USER_IDENTIFIER);
+        $user = $this->testPersonProvider->getPersonClaimsResourceFromApiCached(self::ALUMNUS_USER_IDENTIFIER);
         $this->assertSame(self::ALUMNUS_USER_IDENTIFIER, $user->getUid());
         $this->assertSame('aksel.ostergaard@alumni.someuni.at', $user->getEmail());
     }
 
     public function testGetUserResourceFromApiCached(): void
     {
-        TestPersonProviderFactory::mockUserApiResponse($this->personProvider);
+        $this->testPersonProvider->mockUserApiResponse();
 
-        $user = $this->personProvider->getUserResourceFromApiCached(self::STAFF_USER_IDENTIFIER);
+        $user = $this->testPersonProvider->getUserResourceFromApiCached(self::STAFF_USER_IDENTIFIER);
         $this->assertSame(self::STAFF_USER_IDENTIFIER, $user->getPersonUid());
         $this->assertSame('eleanora.quill@someuni.example', $user->getEmail(0));
         $this->assertSame('maxm', $user->getUsername(0));
 
         // NOTE: no more requests must be made
-        $user = $this->personProvider->getUserResourceFromApiCached(self::STAFF_USER_IDENTIFIER);
+        $user = $this->testPersonProvider->getUserResourceFromApiCached(self::STAFF_USER_IDENTIFIER);
         $this->assertSame(self::STAFF_USER_IDENTIFIER, $user->getPersonUid());
         $this->assertSame('eleanora.quill@someuni.example', $user->getEmail(0));
         $this->assertSame('maxm', $user->getUsername(0));
@@ -699,26 +772,26 @@ class PersonProviderTest extends ApiTestCase
 
     public function testGetUserFromApiCachedNotFound(): void
     {
-        TestPersonProviderFactory::mockEmptyApiResponse($this->personProvider);
+        $this->testPersonProvider->mockEmptyApiResponse();
 
-        $this->assertNull($this->personProvider->getUserResourceFromApiCached('foo'));
+        $this->assertNull($this->testPersonProvider->getUserResourceFromApiCached('foo'));
         // NOTE: no more requests must be made
-        $this->assertNull($this->personProvider->getUserResourceFromApiCached('foo'));
+        $this->assertNull($this->testPersonProvider->getUserResourceFromApiCached('foo'));
     }
 
     public function testGetUserResourceFromApiCachedAfterGetPerson(): void
     {
-        $this->personProvider->getPerson(self::STAFF_USER_IDENTIFIER); // caches the person ids of current request result
+        $this->testPersonProvider->getPerson(self::STAFF_USER_IDENTIFIER); // caches the person ids of current request result
 
-        TestPersonProviderFactory::mockUserApiResponse($this->personProvider);
+        $this->testPersonProvider->mockUserApiResponse();
 
-        $user = $this->personProvider->getUserResourceFromApiCached(self::STAFF_USER_IDENTIFIER);
+        $user = $this->testPersonProvider->getUserResourceFromApiCached(self::STAFF_USER_IDENTIFIER);
         $this->assertSame(self::STAFF_USER_IDENTIFIER, $user->getPersonUid());
         $this->assertSame('eleanora.quill@someuni.example', $user->getEmail(0));
         $this->assertSame('maxm', $user->getUsername(0));
 
         // NOTE: no more requests must be made
-        $user = $this->personProvider->getUserResourceFromApiCached(self::STAFF_USER_IDENTIFIER);
+        $user = $this->testPersonProvider->getUserResourceFromApiCached(self::STAFF_USER_IDENTIFIER);
         $this->assertSame(self::STAFF_USER_IDENTIFIER, $user->getPersonUid());
         $this->assertSame('eleanora.quill@someuni.example', $user->getEmail(0));
         $this->assertSame('maxm', $user->getUsername(0));
@@ -726,22 +799,22 @@ class PersonProviderTest extends ApiTestCase
 
     public function testGetUserResourceFromApiCachedAfterGetPersons(): void
     {
-        $this->personProvider->getPersons(1, 10); // caches the person ids of current request result
+        $this->testPersonProvider->getPersons(1, 10); // caches the person ids of current request result
 
-        TestPersonProviderFactory::mockUserApiResponse($this->personProvider);
+        $this->testPersonProvider->mockUserApiResponse();
 
-        $user = $this->personProvider->getUserResourceFromApiCached(self::STAFF_USER_IDENTIFIER);
+        $user = $this->testPersonProvider->getUserResourceFromApiCached(self::STAFF_USER_IDENTIFIER);
         $this->assertSame(self::STAFF_USER_IDENTIFIER, $user->getPersonUid());
         $this->assertSame('eleanora.quill@someuni.example', $user->getEmail(0));
         $this->assertSame('maxm', $user->getUsername(0));
 
         // NOTE: no more requests must be made
-        $user = $this->personProvider->getUserResourceFromApiCached(self::STUDENT_USER_IDENTIFIER);
+        $user = $this->testPersonProvider->getUserResourceFromApiCached(self::STUDENT_USER_IDENTIFIER);
         $this->assertSame(self::STUDENT_USER_IDENTIFIER, $user->getPersonUid());
         $this->assertSame('luna.perez@someuni.edu', $user->getEmail(0));
         $this->assertSame('maxs', $user->getUsername(0));
 
-        $user = $this->personProvider->getUserResourceFromApiCached(self::ALUMNUS_USER_IDENTIFIER);
+        $user = $this->testPersonProvider->getUserResourceFromApiCached(self::ALUMNUS_USER_IDENTIFIER);
         $this->assertSame(self::ALUMNUS_USER_IDENTIFIER, $user->getPersonUid());
         $this->assertSame('aksel.ostergaard@alumni.someuni.at', $user->getEmail(0));
         $this->assertSame('maxa', $user->getUsername(0));
@@ -749,9 +822,9 @@ class PersonProviderTest extends ApiTestCase
 
     public function testGetEmployeePostalAddress(): void
     {
-        TestPersonProviderFactory::mockPersonClaimsApiResponse($this->personProvider);
+        $this->testPersonProvider->mockPersonClaimsApiResponse();
 
-        $address = $this->personProvider->getEmployeePostalAddress(self::STAFF_USER_IDENTIFIER);
+        $address = $this->testPersonProvider->getEmployeePostalAddress(self::STAFF_USER_IDENTIFIER);
         $this->assertEquals('Graz', $address['city']);
         $this->assertEquals('AT', $address['country']);
         $this->assertEquals('8010', $address['postalCode']);
@@ -761,16 +834,16 @@ class PersonProviderTest extends ApiTestCase
 
     public function testGetEmployeePostalAddressNotFound(): void
     {
-        TestPersonProviderFactory::mockEmptyApiResponse($this->personProvider);
+        $this->testPersonProvider->mockEmptyApiResponse();
 
-        $this->assertNull($this->personProvider->getEmployeePostalAddress(self::STAFF_USER_IDENTIFIER));
+        $this->assertNull($this->testPersonProvider->getEmployeePostalAddress(self::STAFF_USER_IDENTIFIER));
     }
 
     public function testGetEmployeeWorkAddress(): void
     {
-        TestPersonProviderFactory::mockPersonClaimsApiResponse($this->personProvider);
+        $this->testPersonProvider->mockPersonClaimsApiResponse();
 
-        $address = $this->personProvider->getEmployeeWorkAddress(self::STAFF_USER_IDENTIFIER);
+        $address = $this->testPersonProvider->getEmployeeWorkAddress(self::STAFF_USER_IDENTIFIER);
         $this->assertEquals('Wien', $address['city']);
         $this->assertEquals('AT', $address['country']);
         $this->assertEquals('1010', $address['postalCode']);
@@ -782,47 +855,85 @@ class PersonProviderTest extends ApiTestCase
 
     public function testGetEmployeeWorkAddressNotFound(): void
     {
-        TestPersonProviderFactory::mockEmptyApiResponse($this->personProvider);
+        $this->testPersonProvider->mockEmptyApiResponse();
 
-        $this->assertNull($this->personProvider->getEmployeeWorkAddress(self::STAFF_USER_IDENTIFIER));
+        $this->assertNull($this->testPersonProvider->getEmployeeWorkAddress(self::STAFF_USER_IDENTIFIER));
     }
 
-    public function testIsCurrentUserAnEmployee(): void
+    public function testIsCurrentUserAnEmployeeTrue(): void
     {
-        $this->assertTrue($this->personProvider->isCurrentUserAnEmployee());
+        $this->assertEquals(CachedPerson::YES_WITH_ACCOUNT, $this->testPersonProvider->isCurrentUserAnEmployee());
+    }
+
+    public function testIsCurrentUserAnEmployeeFalse(): void
+    {
+        $this->login(self::STUDENT_USER_IDENTIFIER);
+        $this->assertEquals(CachedPerson::NO, $this->testPersonProvider->isCurrentUserAnEmployee());
     }
 
     public function testIsCurrentUserAnEmployeeUndefined(): void
     {
         $this->login('non-existing-user');
-        $this->assertNull($this->personProvider->isCurrentUserAnEmployee());
+        $this->assertNull($this->testPersonProvider->isCurrentUserAnEmployee());
     }
 
-    public function testIsCurrentUserAStudent(): void
+    public function testIsCurrentUserAStudentTrue(): void
     {
-        $this->assertFalse($this->personProvider->isCurrentUserAStudent());
+        $this->login(self::STUDENT_USER_IDENTIFIER);
+        $this->assertEquals(CachedPerson::YES_WITH_ACCOUNT, $this->testPersonProvider->isCurrentUserAStudent());
+    }
+
+    public function testIsCurrentUserAStudentFalse(): void
+    {
+        $this->login(self::STAFF_USER_IDENTIFIER);
+        $this->assertEquals(CachedPerson::NO, $this->testPersonProvider->isCurrentUserAStudent());
     }
 
     public function testIsCurrentUserAStudentUndefined(): void
     {
         $this->login('non-existing-user');
-        $this->assertNull($this->personProvider->isCurrentUserAStudent());
+        $this->assertNull($this->testPersonProvider->isCurrentUserAStudent());
     }
 
-    public function testIsCurrentUserAnAlumni(): void
+    public function testIsCurrentUserAnAlumniTrue(): void
     {
-        $this->assertFalse($this->personProvider->isCurrentUserAnAlumni());
+        $this->login(self::ALUMNUS_USER_IDENTIFIER);
+        $this->assertEquals(CachedPerson::YES_WITH_ACCOUNT, $this->testPersonProvider->isCurrentUserAnAlumni());
+    }
+
+    public function testIsCurrentUserAnAlumniFalse(): void
+    {
+        $this->login(self::STAFF_USER_IDENTIFIER);
+        $this->assertEquals(CachedPerson::NO, $this->testPersonProvider->isCurrentUserAnAlumni());
     }
 
     public function testIsCurrentUserAnAlumniUndefined(): void
     {
         $this->login('non-existing-user');
-        $this->assertNull($this->personProvider->isCurrentUserAnAlumni());
+        $this->assertNull($this->testPersonProvider->isCurrentUserAnAlumni());
     }
 
-    private function login(?string $userIdentifier = self::STAFF_USER_IDENTIFIER, array $userAttributes = []): void
+    public function testIsCurrentUserExternalTrue(): void
     {
-        TestAuthorizationService::setUp($this->personProvider, $userIdentifier, $userAttributes);
+        $this->login(TestPersonProvider::EXTERNAL_USER_IDENTIFIER);
+        $this->assertEquals(CachedPerson::YES_WITHOUT_ACCOUNT, $this->testPersonProvider->isCurrentUserExternal());
+    }
+
+    public function testIsCurrentUserExternalFalse(): void
+    {
+        $this->login(self::STAFF_USER_IDENTIFIER);
+        $this->assertEquals(CachedPerson::NO, $this->testPersonProvider->isCurrentUserExternal());
+    }
+
+    public function testIsCurrentUserExternalUndefined(): void
+    {
+        $this->login('non-existing-user');
+        $this->assertNull($this->testPersonProvider->isCurrentUserExternal());
+    }
+
+    private function login(?string $userIdentifier, array $userAttributes = []): void
+    {
+        $this->testPersonProvider->login($userIdentifier, $userAttributes);
     }
 
     protected static function containsExactlyOneWhere(array $results, callable $where): bool

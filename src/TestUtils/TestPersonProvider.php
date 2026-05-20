@@ -12,7 +12,6 @@ use Dbp\Relay\BasePersonConnectorCampusonlineBundle\EventSubscriber\PersonEventS
 use Dbp\Relay\BasePersonConnectorCampusonlineBundle\Service\PersonProvider;
 use Dbp\Relay\CoreBundle\TestUtils\TestAuthorizationService;
 use Dbp\Relay\CoreBundle\TestUtils\TestEntityManager;
-use Doctrine\ORM\EntityManagerInterface;
 use GuzzleHttp\Handler\MockHandler;
 use GuzzleHttp\HandlerStack;
 use GuzzleHttp\Psr7\Response;
@@ -21,11 +20,12 @@ use Symfony\Component\Cache\Adapter\ArrayAdapter;
 use Symfony\Component\DependencyInjection\ContainerInterface;
 use Symfony\Component\EventDispatcher\EventDispatcher;
 
-class TestPersonProviderFactory
+class TestPersonProvider extends PersonProvider
 {
     public const STAFF_USER_IDENTIFIER = 'staff-id';
     public const STUDENT_USER_IDENTIFIER = 'student-id';
     public const ALUMNUS_USER_IDENTIFIER = 'alumnus-id';
+    public const EXTERNAL_USER_IDENTIFIER = 'external-id'; // is not added by default, because they don't have a user account
 
     public const EMAIL_ATTRIBUTE = 'email';
     public const EMPLOYEE_POSTAL_ADDRESS_ATTRIBUTE = 'employeePostalAddress';
@@ -42,7 +42,7 @@ class TestPersonProviderFactory
         'local_data_mapping' => [
             [
                 'local_data_attribute' => self::EMAIL_ATTRIBUTE,
-                'source_attribute' => CachedPerson::EMAIL_COLUMN_NAME,
+                'source_attribute' => CachedPerson::EMAIL,
                 'default_value' => '',
             ],
             [
@@ -67,7 +67,7 @@ class TestPersonProviderFactory
         ContainerInterface $container,
         array $personEventSubscribers = [],
         ?array $localDataMappingConfig = null
-    ): PersonProvider {
+    ): self {
         $entityManager = TestEntityManager::setUpEntityManager(
             $container,
             DbpRelayBasePersonConnectorCampusonlineExtension::ENTITY_MANAGER_ID
@@ -79,7 +79,7 @@ class TestPersonProviderFactory
         }
 
         $eventDispatcher = new EventDispatcher();
-        $personProvider = new PersonProvider(
+        $personProvider = new self(
             $entityManager,
             new ArrayAdapter(),
             $eventDispatcher
@@ -89,55 +89,50 @@ class TestPersonProviderFactory
 
         $personEventSubscriber = new PersonEventSubscriber($personProvider);
         $personEventSubscriber->setConfig($config);
-        $eventDispatcher->addSubscriber($personEventSubscriber);
+        $personEventSubscribers[] = $personEventSubscriber;
+        $personEventSubscribers[] = new TestPersonEventSubscriber($personProvider);
         foreach ($personEventSubscribers as $subscriber) {
             $eventDispatcher->addSubscriber($subscriber);
         }
-
-        self::recreatePersonCache($personProvider, $entityManager);
-        self::login($personProvider);
+        $personProvider->recreatePersonsCache();
+        $personProvider->login();
 
         return $personProvider;
     }
 
-    public static function login(
-        PersonProvider $personProvider,
+    public function login(
         ?string $currentUserIdentifier = TestAuthorizationService::TEST_USER_IDENTIFIER,
         array $currentUserAttributes = []
     ): void {
         TestAuthorizationService::setUp(
-            $personProvider,
+            $this,
             currentUserIdentifier: $currentUserIdentifier,
             currentUserAttributes: $currentUserAttributes
         );
     }
 
-    public static function mockPersonClaimsApiResponse(PersonProvider $personProvider): void
+    public function mockPersonClaimsApiResponse(): void
     {
-        self::mockApiResponse(
-            $personProvider,
+        $this->mockApiResponse(
             self::getPersonClaimsApiTestResponse()
         );
     }
 
-    public static function mockUserApiResponse(PersonProvider $personProvider): void
+    public function mockUserApiResponse(): void
     {
-        self::mockApiResponse(
-            $personProvider,
+        $this->mockApiResponse(
             self::getUserApiTestResponse()
         );
     }
 
-    public static function mockEmptyApiResponse(PersonProvider $personProvider): void
+    public function mockEmptyApiResponse(): void
     {
-        self::mockApiResponse(
-            $personProvider,
+        $this->mockApiResponse(
             self::getEmptyApiTestResponse()
         );
     }
 
-    public static function mockApiResponse(
-        PersonProvider $personProvider,
+    public function mockApiResponse(
         string $content,
         int $status = \Symfony\Component\HttpFoundation\Response::HTTP_OK,
         bool $mockAuthServerResponses = true
@@ -151,20 +146,20 @@ class TestPersonProviderFactory
         ];
 
         $stack = HandlerStack::create(new MockHandler($responses));
-        $personProvider->setClientHandler($stack);
+        $this->setClientHandler($stack);
     }
 
     /**
      * @param Response[] $responses
      */
-    public static function mockApiResponses(PersonProvider $personProvider, array $responses, bool $mockAuthServerResponses = true): void
+    public function mockApiResponses(array $responses, bool $mockAuthServerResponses = true): void
     {
         if ($mockAuthServerResponses) {
             $responses = array_merge(self::createMockAuthServerResponses(), $responses);
         }
 
         $stack = HandlerStack::create(new MockHandler($responses));
-        $personProvider->setClientHandler($stack);
+        $this->setClientHandler($stack);
     }
 
     public static function createMockAuthServerResponses(): array
@@ -191,41 +186,58 @@ class TestPersonProviderFactory
         return file_get_contents(__DIR__.'/empty_api_response.json');
     }
 
-    private static function recreatePersonCache(PersonProvider $personProvider, EntityManagerInterface $entityManager): void
+    public function recreatePersonsCache(): void
     {
-        self::mockResponsesForPersonCacheRecreation($personProvider);
+        $this->mockResponsesForPersonCacheRecreation();
         try {
             // this is expected to fail, since sqlite does not support some operations
-            $personProvider->recreatePersonsCache();
+            parent::recreatePersonsCache();
         } catch (\Throwable) {
             $personsLiveTable = CachedPerson::TABLE_NAME;
             $personsStagingTable = CachedPersonStaging::TABLE_NAME;
             $personsTempTable = CachedPerson::TABLE_NAME.'_temp';
-            $connection = $entityManager->getConnection();
+            $connection = $this->entityManager->getConnection();
             $connection->executeStatement("ALTER TABLE $personsLiveTable RENAME TO $personsTempTable;");
             $connection->executeStatement("ALTER TABLE $personsStagingTable RENAME TO $personsLiveTable;");
             $connection->executeStatement("ALTER TABLE $personsTempTable RENAME TO $personsStagingTable;");
         } finally {
-            $personProvider->reset(); // ensure new api connection is created on subsequent requests
+            $this->reset(); // ensure new api connection is created on subsequent requests
         }
     }
 
-    private static function mockResponsesForPersonCacheRecreation(PersonProvider $personProvider): void
+    private function mockResponsesForPersonCacheRecreation(): void
     {
         $responses = [...self::createMockAuthServerResponses(),
             new Response(
                 200,
                 ['Content-Type' => 'application/json'],
-                self::getUserApiTestResponse()
+                $this->getUserApiTestResponse()
             ),
             new Response(
                 200,
                 ['Content-Type' => 'application/json'],
-                self::getPersonClaimsApiTestResponse()
+                $this->getPersonClaimsApiTestResponse()
+            ),
+            // for the persons injected via PersonProvider::addPersonsToStagingTable
+            new Response(
+                200,
+                ['Content-Type' => 'application/json'],
+                json_encode(
+                    [
+                        'items' => [
+                            [
+                                'givenName' => 'External',
+                                'surname' => 'Person',
+                                'uid' => 'external-id',
+                                'email' => 'external@person.com',
+                            ],
+                        ],
+                    ]
+                )
             ),
         ];
 
         $stack = HandlerStack::create(new MockHandler($responses));
-        $personProvider->setClientHandler($stack);
+        $this->setClientHandler($stack);
     }
 }

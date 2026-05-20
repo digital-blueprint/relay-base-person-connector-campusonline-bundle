@@ -18,8 +18,8 @@ readonly class MigratePostEventSubscriber implements EventSubscriberInterface
     }
 
     public function __construct(
-        private PersonProvider $personProvider)
-    {
+        private PersonProvider $personProvider
+    ) {
     }
 
     public function onMigratePostEvent(MigratePostEvent $event): void
