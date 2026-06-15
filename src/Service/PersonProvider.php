@@ -35,10 +35,12 @@ use Dbp\Relay\CoreBundle\Rest\Query\Pagination\Pagination;
 use Dbp\Relay\CoreBundle\Rest\Query\Sort\SortTools;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\Tools\Pagination\Paginator;
+use Psr\Cache\CacheItemPoolInterface;
 use Psr\Log\LoggerAwareInterface;
 use Psr\Log\LoggerAwareTrait;
 use Symfony\Component\EventDispatcher\EventDispatcherInterface;
 use Symfony\Component\HttpFoundation\Response;
+use Symfony\Contracts\Cache\NamespacedPoolInterface;
 
 class PersonProvider extends AbstractAuthorizationService implements PersonProviderInterface, LoggerAwareInterface
 {
@@ -89,6 +91,7 @@ class PersonProvider extends AbstractAuthorizationService implements PersonProvi
     private ?PersonClaimsApi $personClaimsApi = null;
     private ?UserApi $userApi = null;
     private LocalDataEventDispatcher $eventDispatcher;
+    private CacheItemPoolInterface $campusonlineApiCache;
     private ?string $currentPersonIdentifier = null;
 
     /**
@@ -122,10 +125,16 @@ class PersonProvider extends AbstractAuthorizationService implements PersonProvi
 
     public function __construct(
         protected readonly EntityManagerInterface $entityManager,
+        CacheItemPoolInterface $campusonlineApiCache,
         EventDispatcherInterface $eventDispatcher
     ) {
         parent::__construct();
 
+        if ($campusonlineApiCache instanceof NamespacedPoolInterface) {
+            $campusonlineApiCache = $campusonlineApiCache->withSubNamespace(Connection::CACHE_SUBNAMESPACE);
+        }
+
+        $this->campusonlineApiCache = $campusonlineApiCache;
         $this->eventDispatcher = new LocalDataEventDispatcher('', $eventDispatcher);
     }
 
@@ -200,7 +209,8 @@ class PersonProvider extends AbstractAuthorizationService implements PersonProvi
                 $personsLiveTableName TO $personsTempTableName,
                 $personsStagingTableName TO $personsLiveTableName,
                 $personsTempTableName TO $personsStagingTableName
-                STMT);
+                STMT
+            );
         } catch (\Throwable $throwable) {
             $this->logger?->error('Error recreating person cache: '.$throwable->getMessage());
             throw $throwable;
@@ -326,9 +336,9 @@ class PersonProvider extends AbstractAuthorizationService implements PersonProvi
     }
 
     /**
-     * May only be called during person cache re-creation, i.e. on @see RecreatePersonCachePostEvent.
+     * May only be called during person cache re-creation, i.e. on @throws \Throwable.
      *
-     * @throws \Throwable
+     * @see RecreatePersonCachePostEvent.
      */
     public function addPersonsToStagingTable(
         array $personIdentifiers,
@@ -659,6 +669,7 @@ class PersonProvider extends AbstractAuthorizationService implements PersonProvi
                 $this->config['client_id'],
                 $this->config['client_secret']
             );
+            $this->connection->setCache($this->campusonlineApiCache);
             $this->connection->setLogger($this->logger);
         }
 

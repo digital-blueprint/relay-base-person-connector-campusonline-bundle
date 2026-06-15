@@ -16,6 +16,7 @@ use GuzzleHttp\Handler\MockHandler;
 use GuzzleHttp\HandlerStack;
 use GuzzleHttp\Psr7\Response;
 use Psr\Log\NullLogger;
+use Symfony\Component\Cache\Adapter\NullAdapter;
 use Symfony\Component\DependencyInjection\ContainerInterface;
 use Symfony\Component\EventDispatcher\EventDispatcher;
 
@@ -80,6 +81,7 @@ class TestPersonProvider extends PersonProvider
         $eventDispatcher = new EventDispatcher();
         $personProvider = new self(
             $entityManager,
+            new NullAdapter(),
             $eventDispatcher
         );
         $personProvider->setLogger(new NullLogger());
