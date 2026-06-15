@@ -16,6 +16,7 @@ use GuzzleHttp\Handler\MockHandler;
 use GuzzleHttp\HandlerStack;
 use GuzzleHttp\Psr7\Response;
 use Psr\Log\NullLogger;
+use Symfony\Component\Cache\Adapter\NullAdapter;
 use Symfony\Component\DependencyInjection\ContainerInterface;
 use Symfony\Component\EventDispatcher\EventDispatcher;
 
@@ -62,6 +63,8 @@ class TestPersonProvider extends PersonProvider
         ],
     ];
 
+    private ?MockHandler $mockHandler = null;
+
     public static function createTestPersonProvider(
         ContainerInterface $container,
         array $personEventSubscribers = [],
@@ -80,6 +83,7 @@ class TestPersonProvider extends PersonProvider
         $eventDispatcher = new EventDispatcher();
         $personProvider = new self(
             $entityManager,
+            new NullAdapter(),
             $eventDispatcher
         );
         $personProvider->setLogger(new NullLogger());
@@ -109,10 +113,11 @@ class TestPersonProvider extends PersonProvider
         );
     }
 
-    public function mockPersonClaimsApiResponse(): void
+    public function mockPersonClaimsApiResponse(bool $mockAuthServerResponses = true): void
     {
         $this->mockApiResponse(
-            self::getPersonClaimsApiTestResponse()
+            self::getPersonClaimsApiTestResponse(),
+            mockAuthServerResponses: $mockAuthServerResponses
         );
     }
 
@@ -135,16 +140,13 @@ class TestPersonProvider extends PersonProvider
         int $status = \Symfony\Component\HttpFoundation\Response::HTTP_OK,
         bool $mockAuthServerResponses = true
     ): void {
-        $responses = [...($mockAuthServerResponses ? self::createMockAuthServerResponses() : []),
+        $this->mockApiResponses([
             new Response(
                 $status,
                 ['Content-Type' => 'application/json'],
                 $content
             ),
-        ];
-
-        $stack = HandlerStack::create(new MockHandler($responses));
-        $this->setClientHandler($stack);
+        ], mockAuthServerResponses: $mockAuthServerResponses);
     }
 
     /**
@@ -156,8 +158,14 @@ class TestPersonProvider extends PersonProvider
             $responses = array_merge(self::createMockAuthServerResponses(), $responses);
         }
 
-        $stack = HandlerStack::create(new MockHandler($responses));
-        $this->setClientHandler($stack);
+        $this->mockHandler = new MockHandler($responses);
+        $handlerStack = HandlerStack::create($this->mockHandler);
+        $this->setClientHandler($handlerStack);
+    }
+
+    public function wereApiResponsesConsumed(): bool
+    {
+        return ($this->mockHandler?->count() ?? 0) === 0;
     }
 
     public static function createMockAuthServerResponses(): array
@@ -199,6 +207,7 @@ class TestPersonProvider extends PersonProvider
             $connection->executeStatement("ALTER TABLE $personsStagingTable RENAME TO $personsLiveTable;");
             $connection->executeStatement("ALTER TABLE $personsTempTable RENAME TO $personsStagingTable;");
         } finally {
+            assert($this->wereApiResponsesConsumed());
             $this->reset(); // ensure new api connection is created on subsequent requests
         }
     }
@@ -235,7 +244,8 @@ class TestPersonProvider extends PersonProvider
             ),
         ];
 
-        $stack = HandlerStack::create(new MockHandler($responses));
-        $this->setClientHandler($stack);
+        $this->mockHandler = new MockHandler($responses);
+        $handlerStack = HandlerStack::create($this->mockHandler);
+        $this->setClientHandler($handlerStack);
     }
 }
