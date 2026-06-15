@@ -9,6 +9,7 @@ use Dbp\Relay\BasePersonBundle\Entity\Person;
 use Dbp\Relay\BasePersonConnectorCampusonlineBundle\Entity\CachedPerson;
 use Dbp\Relay\BasePersonConnectorCampusonlineBundle\TestUtils\TestPersonProvider;
 use Dbp\Relay\CoreBundle\Rest\Options;
+use Symfony\Component\Cache\Adapter\ArrayAdapter;
 
 /**
  * TODO: add more persons to responses for reasonable pagination, search and filter tests.
@@ -35,6 +36,13 @@ class PersonProviderTest extends ApiTestCase
         );
 
         $this->login(self::STAFF_USER_IDENTIFIER);
+    }
+
+    protected function tearDown(): void
+    {
+        parent::tearDown();
+
+        $this->assertTrue($this->testPersonProvider->wereApiResponsesConsumed());
     }
 
     public function testGetCurrentPersonIdentifier(): void
@@ -111,6 +119,20 @@ class PersonProviderTest extends ApiTestCase
         $person = $this->testPersonProvider->getPerson(self::STAFF_USER_IDENTIFIER);
         $this->assertSame(self::STAFF_USER_IDENTIFIER, $person->getIdentifier());
         $this->assertNull($person->getLocalData());
+    }
+
+    public function testCampusonlineApiTokenCache(): void
+    {
+        $this->testPersonProvider->setCache(new ArrayAdapter());
+        $this->testPersonProvider->mockPersonClaimsApiResponse(true);
+        $personClaims = $this->testPersonProvider->getPersonClaimsResourceFromApiCached(self::STAFF_USER_IDENTIFIER);
+        $this->assertEquals(self::STAFF_USER_IDENTIFIER, $personClaims->getUid());
+        $this->assertTrue($this->testPersonProvider->wereApiResponsesConsumed());
+        $this->testPersonProvider->reset(); // post request cleanup (resets in-memory caches)
+
+        $this->testPersonProvider->mockPersonClaimsApiResponse(false);
+        $this->testPersonProvider->getPersonClaimsResourceFromApiCached(self::STAFF_USER_IDENTIFIER);
+        $this->assertEquals(self::STAFF_USER_IDENTIFIER, $personClaims->getUid());
     }
 
     public function testGetExternalPerson(): void
@@ -656,9 +678,10 @@ class PersonProviderTest extends ApiTestCase
 
         $personIdentifier = $this->testPersonProvider->getPersonIdentifierByUsername('maxm');
         $this->assertEquals('staff-id', $personIdentifier);
+        $this->assertTrue($this->testPersonProvider->wereApiResponsesConsumed());
+        $this->testPersonProvider->reset();
 
         $this->testPersonProvider->mockEmptyApiResponse();
-
         $this->assertNull($this->testPersonProvider->getPersonIdentifierByUsername('foo'));
     }
 
@@ -668,9 +691,10 @@ class PersonProviderTest extends ApiTestCase
 
         $personIdentifier = $this->testPersonProvider->getPersonIdentifierByEmail('eleanora.quill@someuni.example');
         $this->assertEquals('staff-id', $personIdentifier);
+        $this->assertTrue($this->testPersonProvider->wereApiResponsesConsumed());
+        $this->testPersonProvider->reset();
 
         $this->testPersonProvider->mockEmptyApiResponse();
-
         $this->assertNull($this->testPersonProvider->getPersonIdentifierByEmail('foo'));
     }
 

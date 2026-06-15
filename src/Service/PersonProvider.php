@@ -130,9 +130,7 @@ class PersonProvider extends AbstractAuthorizationService implements PersonProvi
     ) {
         parent::__construct();
 
-        if ($campusonlineApiCache instanceof NamespacedPoolInterface) {
-            $campusonlineApiCache = $campusonlineApiCache->withSubNamespace(Connection::CACHE_SUBNAMESPACE);
-        }
+        $this->setCache($campusonlineApiCache);
 
         $this->campusonlineApiCache = $campusonlineApiCache;
         $this->eventDispatcher = new LocalDataEventDispatcher('', $eventDispatcher);
@@ -146,6 +144,19 @@ class PersonProvider extends AbstractAuthorizationService implements PersonProvi
             self::CURRENT_PERSON_IDENTIFIER_AUTHORIZATION_ATTRIBUTE => $config[Configuration::CURRENT_PERSON_IDENTIFIER_EXPRESSION_ATTRIBUTE],
         ];
         $this->setUpAccessControlPolicies(attributes: $attributes);
+    }
+
+    public function setCache(CacheItemPoolInterface $cache): void
+    {
+        if ($cache instanceof NamespacedPoolInterface) {
+            $cache = $cache->withSubNamespace(Connection::CACHE_SUBNAMESPACE);
+        }
+
+        $this->campusonlineApiCache = $cache;
+
+        if ($this->connection !== null) {
+            $this->connection->setCache($this->campusonlineApiCache);
+        }
     }
 
     public function setClientHandler(object $stack): void
