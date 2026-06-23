@@ -41,6 +41,7 @@ use Psr\Log\LoggerAwareTrait;
 use Symfony\Component\EventDispatcher\EventDispatcherInterface;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Contracts\Cache\NamespacedPoolInterface;
+use Symfony\Contracts\Service\Attribute\Required;
 
 class PersonProvider extends AbstractAuthorizationService implements PersonProviderInterface, LoggerAwareInterface
 {
@@ -125,14 +126,10 @@ class PersonProvider extends AbstractAuthorizationService implements PersonProvi
 
     public function __construct(
         protected readonly EntityManagerInterface $entityManager,
-        CacheItemPoolInterface $campusonlineApiCache,
         EventDispatcherInterface $eventDispatcher
     ) {
         parent::__construct();
 
-        $this->setCache($campusonlineApiCache);
-
-        $this->campusonlineApiCache = $campusonlineApiCache;
         $this->eventDispatcher = new LocalDataEventDispatcher('', $eventDispatcher);
     }
 
@@ -146,17 +143,13 @@ class PersonProvider extends AbstractAuthorizationService implements PersonProvi
         $this->setUpAccessControlPolicies(attributes: $attributes);
     }
 
+    #[Required]
     public function setCache(CacheItemPoolInterface $cache): void
     {
-        if ($cache instanceof NamespacedPoolInterface) {
-            $cache = $cache->withSubNamespace(Connection::CACHE_SUBNAMESPACE);
-        }
-
-        $this->campusonlineApiCache = $cache;
-
-        if ($this->connection !== null) {
-            $this->connection->setCache($this->campusonlineApiCache);
-        }
+        $this->campusonlineApiCache = $cache instanceof NamespacedPoolInterface ?
+            $cache->withSubNamespace(Connection::CACHE_SUBNAMESPACE) :
+            $cache;
+        $this->connection?->setCache($this->campusonlineApiCache);
     }
 
     public function setClientHandler(object $stack): void

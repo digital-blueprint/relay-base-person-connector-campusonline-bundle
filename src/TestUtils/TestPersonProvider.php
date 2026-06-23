@@ -83,11 +83,11 @@ class TestPersonProvider extends PersonProvider
         $eventDispatcher = new EventDispatcher();
         $personProvider = new self(
             $entityManager,
-            new NullAdapter(),
             $eventDispatcher
         );
         $personProvider->setLogger(new NullLogger());
         $personProvider->setConfig($config);
+        $personProvider->setCache(new NullAdapter());
 
         $personEventSubscriber = new PersonEventSubscriber($personProvider);
         $personEventSubscriber->setConfig($config);

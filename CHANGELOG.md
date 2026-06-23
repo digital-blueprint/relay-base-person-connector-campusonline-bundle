@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Change the way the token cache is injected
+
+## v0.1.16
+
+- use Campusonline token cache
+
 ## v0.1.15
 
 - Fix migrations
