@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v0.1.17
+
 - Change the way the token cache is injected
 
 ## v0.1.16
