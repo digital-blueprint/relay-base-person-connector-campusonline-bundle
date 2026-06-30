@@ -809,6 +809,7 @@ class PersonProvider extends AbstractAuthorizationService implements PersonProvi
         $cachedPerson->setEmail(self::getMainEmail($personClaimsResource));
         $cachedPerson->setMatriculationNumber($personClaimsResource->getMatriculationNumber());
         $cachedPerson->setGenderKey($personClaimsResource->getGenderKey());
+        $cachedPerson->setPersonTypeKey($personClaimsResource->getPersonTypeKey());
         $cachedPerson->setTitlePrefix($personClaimsResource->getTitlePrefix());
         $cachedPerson->setTitleSuffix($personClaimsResource->getTitleSuffix());
         // NOTE: account types are set depending on user account info

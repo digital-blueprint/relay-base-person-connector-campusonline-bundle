@@ -28,6 +28,8 @@ class TestPersonProvider extends PersonProvider
     public const EXTERNAL_USER_IDENTIFIER = 'external-id'; // is not added by default, because they don't have a user account
 
     public const EMAIL_ATTRIBUTE = 'email';
+    public const PERSON_TYPE_KEY_ATTRIBUTE = 'personTypeKey';
+
     public const EMPLOYEE_POSTAL_ADDRESS_ATTRIBUTE = 'employeePostalAddress';
     public const EMPLOYEE_WORK_ADDRESS_ATTRIBUTE = 'employeeWorkAddress';
     public const USERNAME_ATTRIBUTE = 'username';
@@ -43,6 +45,11 @@ class TestPersonProvider extends PersonProvider
             [
                 'local_data_attribute' => self::EMAIL_ATTRIBUTE,
                 'source_attribute' => CachedPerson::EMAIL,
+                'default_value' => '',
+            ],
+            [
+                'local_data_attribute' => self::PERSON_TYPE_KEY_ATTRIBUTE,
+                'source_attribute' => CachedPerson::PERSON_TYPE_KEY,
                 'default_value' => '',
             ],
             [

@@ -43,7 +43,9 @@ trait CachedPersonTrait
         self::IS_STUDENT => 'getIsStudent',
         self::IS_ALUMNI => 'getIsAlumni',
         self::IS_EXTERNAL => 'getIsExternal',
+        self::PERSON_TYPE_KEY => 'getPersonTypeKey',
     ];
+    public const PERSON_TYPE_KEY = 'personTypeKey';
 
     #[ORM\Id]
     #[ORM\Column(name: self::UID, type: 'string', length: 32)]
@@ -64,6 +66,8 @@ trait CachedPersonTrait
     private ?string $titleSuffix = null;
     #[ORM\Column(name: self::GENDER_KEY, type: 'string', length: 4, nullable: true)]
     private ?string $genderKey = null;
+    #[ORM\Column(name: self::PERSON_TYPE_KEY, type: 'string', length: 4, nullable: true)]
+    private ?string $personTypeKey = null;
     #[ORM\Column(name: self::IS_STAFF, type: 'smallint')]
     private int $isStaff = self::NO;
     #[ORM\Column(name: self::IS_STUDENT, type: 'smallint')]
@@ -161,6 +165,16 @@ trait CachedPersonTrait
     public function setGenderKey(?string $genderKey): void
     {
         $this->genderKey = $genderKey;
+    }
+
+    public function getPersonTypeKey(): ?string
+    {
+        return $this->personTypeKey;
+    }
+
+    public function setPersonTypeKey(?string $personTypeKey): void
+    {
+        $this->personTypeKey = $personTypeKey;
     }
 
     public function getIsStaff(): int
