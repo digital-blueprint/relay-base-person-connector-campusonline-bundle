@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## v0.1.18
+
+- Add personTypeKey local data source attribute
+
 ## v0.1.17
 
 - Change the way the token cache is injected
