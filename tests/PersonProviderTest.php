@@ -21,6 +21,7 @@ class PersonProviderTest extends ApiTestCase
     private const ALUMNUS_USER_IDENTIFIER = TestPersonProvider::ALUMNUS_USER_IDENTIFIER;
 
     private const EMAIL_ATTRIBUTE = TestPersonProvider::EMAIL_ATTRIBUTE;
+    private const PERSON_TYPE_KEY_ATTRIBUTE = TestPersonProvider::PERSON_TYPE_KEY_ATTRIBUTE;
     private const EMPLOYEE_POSTAL_ADDRESS_ATTRIBUTE = TestPersonProvider::EMPLOYEE_POSTAL_ADDRESS_ATTRIBUTE;
     private const EMPLOYEE_WORK_ADDRESS_ATTRIBUTE = TestPersonProvider::EMPLOYEE_WORK_ADDRESS_ATTRIBUTE;
     private const USERNAME_ATTRIBUTE = TestPersonProvider::USERNAME_ATTRIBUTE;
@@ -146,11 +147,15 @@ class PersonProviderTest extends ApiTestCase
     public function testGetPersonWithLocalData(): void
     {
         $options = [];
-        Options::requestLocalDataAttributes($options, [self::EMAIL_ATTRIBUTE]);
+        Options::requestLocalDataAttributes($options, [
+            self::EMAIL_ATTRIBUTE,
+            self::PERSON_TYPE_KEY_ATTRIBUTE,
+        ]);
         $person = $this->testPersonProvider->getPerson(self::STAFF_USER_IDENTIFIER, $options);
         $this->assertSame(self::STAFF_USER_IDENTIFIER, $person->getIdentifier());
-        $this->assertCount(1, $person->getLocalData());
+        $this->assertCount(2, $person->getLocalData());
         $this->assertSame('eleanora.quill@someuni.example', $person->getLocalData()[self::EMAIL_ATTRIBUTE]);
+        $this->assertSame('R', $person->getLocalData()[self::PERSON_TYPE_KEY_ATTRIBUTE]);
     }
 
     public function testGetPersonWithLocalDataNewPersonClaimsApiRequest(): void
