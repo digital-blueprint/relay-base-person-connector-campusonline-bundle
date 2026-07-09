@@ -1,0 +1,69 @@
+{
+  "items": [
+    {
+      "admissionType": "M",
+      "degreeProgrammeType": "COMPOSITE",
+      "identifier": "UB 032 348 363",
+      "intendedDegree": {
+        "key": "00",
+        "name": {
+          "value": {
+            "de": "Abschluss unbekannt",
+            "en": "Unknown certificate"
+          }
+        }
+      },
+      "partialDegreeProgrammes": [
+        {
+          "identifier": "UB 032 348",
+          "order": 0,
+          "parentDegreeProgrammeUid": "1410",
+          "subject": {
+            "code": "348",
+            "name": {
+              "value": {
+                "de": "Studienrichtung Italienisch",
+                "en": "Field of studies: Italian"
+              }
+            },
+            "uid": "470"
+          },
+          "uid": "1410_470"
+        },
+        {
+          "identifier": "UB 032 032",
+          "order": 1,
+          "parentDegreeProgrammeUid": "1410",
+          "subject": {
+            "code": "032",
+            "name": {
+              "value": {
+                "de": "Bachelorstudium Mehrsprachigkeit, Translation und digitale Kommunikation",
+                "en": "Bachelor's programme: Multilingualism, Translation and Digital Communication"
+              }
+            },
+            "uid": "6486"
+          },
+          "uid": "1410_6486"
+        },
+        {
+          "identifier": "UB 032 363",
+          "order": 2,
+          "parentDegreeProgrammeUid": "1410",
+          "subject": {
+            "code": "363",
+            "name": {
+              "value": {
+                "de": "Studienrichtung Serbokroatisch",
+                "en": "Field of studies: Serbo-Croatian"
+              }
+            },
+            "uid": "479"
+          },
+          "uid": "1410_479"
+        }
+      ],
+      "uid": "1410"
+    }
+  ]
+}

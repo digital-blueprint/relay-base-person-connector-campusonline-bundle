@@ -25,6 +25,7 @@ class PersonProviderTest extends ApiTestCase
     private const EMPLOYEE_POSTAL_ADDRESS_ATTRIBUTE = TestPersonProvider::EMPLOYEE_POSTAL_ADDRESS_ATTRIBUTE;
     private const EMPLOYEE_WORK_ADDRESS_ATTRIBUTE = TestPersonProvider::EMPLOYEE_WORK_ADDRESS_ATTRIBUTE;
     private const USERNAME_ATTRIBUTE = TestPersonProvider::USERNAME_ATTRIBUTE;
+    private const STUDIES_ATTRIBUTE = TestPersonProvider::STUDIES_ATTRIBUTE;
 
     private ?TestPersonProvider $testPersonProvider = null;
 
@@ -217,6 +218,61 @@ class PersonProviderTest extends ApiTestCase
         $person = $this->testPersonProvider->getPerson(self::STAFF_USER_IDENTIFIER, $options);
         $this->assertCount(1, $person->getLocalData());
         $this->assertSame('maxm', $person->getLocalData()[self::USERNAME_ATTRIBUTE]);
+    }
+
+    public function testGetPersonWithLocalDataNewStudiesApiRequest(): void
+    {
+        $this->testPersonProvider->mockStudiesApiResponses();
+
+        $options = [];
+        Options::requestLocalDataAttributes($options, [
+            self::STUDIES_ATTRIBUTE,
+        ]);
+
+        $person = $this->testPersonProvider->getPerson(self::STAFF_USER_IDENTIFIER, $options);
+
+        $this->assertCount(1, $person->getLocalData());
+        $this->assertArrayHasKey(self::STUDIES_ATTRIBUTE, $person->getLocalData());
+
+        $studies = $person->getLocalData()[self::STUDIES_ATTRIBUTE];
+
+        $this->assertIsArray($studies);
+        $this->assertCount(1, $studies);
+
+        $this->assertSame([
+            'key' => 'UB 032 348 363',
+            'name' => 'Bachelorstudium Mehrsprachigkeit, Translation und digitale Kommunikation; Studienrichtung Italienisch; Studienrichtung Serbokroatisch',
+        ], $studies[0]);
+
+        $this->assertTrue($this->testPersonProvider->wereApiResponsesConsumed());
+    }
+
+    public function testGetPersonWithLocalDataNewStudiesApiRequestUsesRequestedLanguage(): void
+    {
+        $this->testPersonProvider->mockStudiesApiResponses();
+
+        $options = [];
+        Options::setLanguage($options, 'en');
+        Options::requestLocalDataAttributes($options, [
+            self::STUDIES_ATTRIBUTE,
+        ]);
+
+        $person = $this->testPersonProvider->getPerson(self::STAFF_USER_IDENTIFIER, $options);
+
+        $this->assertCount(1, $person->getLocalData());
+        $this->assertArrayHasKey(self::STUDIES_ATTRIBUTE, $person->getLocalData());
+
+        $studies = $person->getLocalData()[self::STUDIES_ATTRIBUTE];
+
+        $this->assertIsArray($studies);
+        $this->assertCount(1, $studies);
+
+        $this->assertSame([
+            'key' => 'UB 032 348 363',
+            'name' => "Bachelor's programme: Multilingualism, Translation and Digital Communication; Field of studies: Italian; Field of studies: Serbo-Croatian",
+        ], $studies[0]);
+
+        $this->assertTrue($this->testPersonProvider->wereApiResponsesConsumed());
     }
 
     public function testGetPersonWithLocalDataNewUserApiRequestNotFound(): void
@@ -542,6 +598,53 @@ class PersonProviderTest extends ApiTestCase
                 && 1 === count($person->getLocalData())
                 && null === $person->getLocalData()[self::USERNAME_ATTRIBUTE]
         ));
+    }
+
+    public function testGetPersonsWithLocalDataNewStudiesApiRequest(): void
+    {
+        $this->testPersonProvider->mockStudiesApiResponses();
+
+        $options = [];
+        Options::requestLocalDataAttributes($options, [
+            self::STUDIES_ATTRIBUTE,
+        ]);
+
+        $persons = $this->testPersonProvider->getPersons(1, 10, $options);
+
+        $this->assertCount(4, $persons);
+
+        $this->assertTrue(self::containsExactlyOneWhere(
+            $persons,
+            fn (Person $person) => self::STAFF_USER_IDENTIFIER === $person->getIdentifier()
+                && 1 === count($person->getLocalData())
+                && 1 === count($person->getLocalData()[self::STUDIES_ATTRIBUTE])
+                && 'UB 032 348 363' === $person->getLocalData()[self::STUDIES_ATTRIBUTE][0]['key']
+                && 'Bachelorstudium Mehrsprachigkeit, Translation und digitale Kommunikation; Studienrichtung Italienisch; Studienrichtung Serbokroatisch'
+                === $person->getLocalData()[self::STUDIES_ATTRIBUTE][0]['name']
+        ));
+
+        $this->assertTrue(self::containsExactlyOneWhere(
+            $persons,
+            fn (Person $person) => self::STUDENT_USER_IDENTIFIER === $person->getIdentifier()
+                && 1 === count($person->getLocalData())
+                && [] === $person->getLocalData()[self::STUDIES_ATTRIBUTE]
+        ));
+
+        $this->assertTrue(self::containsExactlyOneWhere(
+            $persons,
+            fn (Person $person) => self::ALUMNUS_USER_IDENTIFIER === $person->getIdentifier()
+                && 1 === count($person->getLocalData())
+                && [] === $person->getLocalData()[self::STUDIES_ATTRIBUTE]
+        ));
+
+        $this->assertTrue(self::containsExactlyOneWhere(
+            $persons,
+            fn (Person $person) => TestPersonProvider::EXTERNAL_USER_IDENTIFIER === $person->getIdentifier()
+                && 1 === count($person->getLocalData())
+                && [] === $person->getLocalData()[self::STUDIES_ATTRIBUTE]
+        ));
+
+        $this->assertTrue($this->testPersonProvider->wereApiResponsesConsumed());
     }
 
     public function testGetPersonsWithLocalDataNewUserApiRequestNotFound(): void

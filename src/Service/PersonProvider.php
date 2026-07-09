@@ -13,6 +13,10 @@ use Dbp\CampusonlineApi\PublicRestApi\CursorBasedResourcePage;
 use Dbp\CampusonlineApi\PublicRestApi\Persons\Common;
 use Dbp\CampusonlineApi\PublicRestApi\Persons\PersonClaimsApi;
 use Dbp\CampusonlineApi\PublicRestApi\Persons\PersonClaimsResource;
+use Dbp\CampusonlineApi\PublicRestApi\Studies\DegreeProgrammeApi;
+use Dbp\CampusonlineApi\PublicRestApi\Studies\DegreeProgrammeResource;
+use Dbp\CampusonlineApi\PublicRestApi\Studies\StudiesApi;
+use Dbp\CampusonlineApi\PublicRestApi\Studies\StudiesResource;
 use Dbp\Relay\BasePersonBundle\API\PersonProviderInterface;
 use Dbp\Relay\BasePersonBundle\Entity\Person;
 use Dbp\Relay\BasePersonConnectorCampusonlineBundle\DependencyInjection\Configuration;
@@ -48,6 +52,7 @@ class PersonProvider extends AbstractAuthorizationService implements PersonProvi
     use LoggerAwareTrait;
 
     private const CURRENT_PERSON_IDENTIFIER_AUTHORIZATION_ATTRIBUTE = 'cpi';
+    private const DEFAULT_LANGUAGE_TAG = 'de';
 
     private const ACCOUNT_STATUS_KEYS_TO_FETCH = [
         AccountsCommon::OK_ACCOUNT_STATUS_KEY,
@@ -57,7 +62,6 @@ class PersonProvider extends AbstractAuthorizationService implements PersonProvi
     private const STUDENT_ACCOUNT_TYPE_KEY = 'STUDENT';
     private const ALUMNI_ACCOUNT_TYPE_KEY = 'A';
     private const BASEACCOUNT_ACCOUNT_TYPE_KEY = 'BASEACCOUNT';
-
     // TODO: make non-const account type keys configurable via config instead of hardcoding them
     private const ACCOUNT_TYPE_KEYS_TO_FETCH = [
         self::STAFF_ACCOUNT_TYPE_KEY,
@@ -91,6 +95,9 @@ class PersonProvider extends AbstractAuthorizationService implements PersonProvi
     private ?Connection $connection = null;
     private ?PersonClaimsApi $personClaimsApi = null;
     private ?UserApi $userApi = null;
+
+    private ?StudiesApi $studiesApi = null;
+    private ?DegreeProgrammeApi $degreeProgrammeApi = null;
     private LocalDataEventDispatcher $eventDispatcher;
     private CacheItemPoolInterface $campusonlineApiCache;
     private ?string $currentPersonIdentifier = null;
@@ -118,6 +125,15 @@ class PersonProvider extends AbstractAuthorizationService implements PersonProvi
      * @var array<string, ?UserResource>|null
      */
     private ?array $userResourcesRequestCache = null;
+
+    /**
+     * @var array<string, array<int, StudiesResource>>|null
+     */
+    private ?array $studiesRequestCache = null;
+    /**
+     * @var array<string, DegreeProgrammeResource>
+     */
+    private array $degreeProgrammeResourcesRequestCache = [];
 
     /**
      * @var array<string, CachedPerson>
@@ -189,6 +205,10 @@ class PersonProvider extends AbstractAuthorizationService implements PersonProvi
         $this->cachedPersonsRequestCache = [];
         $this->personClaimsResourcesRequestCache = null;
         $this->userResourcesRequestCache = null;
+        $this->studiesApi = null;
+        $this->degreeProgrammeApi = null;
+        $this->studiesRequestCache = null;
+        $this->degreeProgrammeResourcesRequestCache = [];
     }
 
     /**
@@ -501,6 +521,19 @@ class PersonProvider extends AbstractAuthorizationService implements PersonProvi
         return $this->userResourcesRequestCache[$personIdentifier];
     }
 
+    /**
+     * @return array<int, array{key: string|null, name: string|null}>
+     */
+    public function getStudiesFromApiCached(string $personIdentifier, array $options = []): array
+    {
+        $this->requestCacheStudies();
+
+        return array_map(
+            fn (StudiesResource $studyResource): array => $this->createStudyArray($studyResource, $options),
+            $this->studiesRequestCache[$personIdentifier] ?? []
+        );
+    }
+
     public function isCurrentUserAnEmployee(): ?int
     {
         return $this->getCurrentCachedPerson()?->getIsStaff();
@@ -598,6 +631,92 @@ class PersonProvider extends AbstractAuthorizationService implements PersonProvi
     }
 
     /**
+     * Gets all study data corresponding to the current result set from the API and caches it locally
+     * for the duration of the current request.
+     */
+    private function requestCacheStudies(): void
+    {
+        if ($this->studiesRequestCache !== null) {
+            return;
+        }
+
+        $this->studiesRequestCache = array_fill_keys(array_keys($this->cachedPersonsRequestCache), []);
+
+        try {
+            $studies = [];
+            $degreeProgrammeUids = [];
+
+            $currentPersonIndex = 0;
+            while ($currentPersonIndex < count($this->cachedPersonsRequestCache)) {
+                $personUids = array_keys(
+                    array_slice(
+                        $this->cachedPersonsRequestCache,
+                        $currentPersonIndex,
+                        self::MAX_NUM_PERSON_UIDS_PER_REQUEST,
+                        true
+                    )
+                );
+
+                /** @var StudiesResource $studyResource */
+                foreach ($this->getStudiesApi()->getStudiesByPersonUids($personUids) as $studyResource) {
+                    $studies[] = $studyResource;
+
+                    if ($degreeProgrammeUid = $studyResource->getDegreeProgrammeUid()) {
+                        $degreeProgrammeUids[$degreeProgrammeUid] = null;
+                    }
+                }
+
+                $currentPersonIndex += self::MAX_NUM_PERSON_UIDS_PER_REQUEST;
+            }
+
+            $this->requestCacheDegreeProgrammes(array_keys($degreeProgrammeUids));
+
+            foreach ($studies as $studyResource) {
+                $personUid = $studyResource->getPersonUid();
+
+                if ($personUid === null) {
+                    continue;
+                }
+
+                $this->studiesRequestCache[$personUid][] = $studyResource;
+            }
+        } catch (\Throwable $throwable) {
+            throw $this->dispatchException($throwable, 'failed to get studies from CO Study API');
+        }
+    }
+
+    /**
+     * @param string[] $degreeProgrammeUids
+     */
+    private function requestCacheDegreeProgrammes(array $degreeProgrammeUids): void
+    {
+        $degreeProgrammeUids = array_values(array_unique(array_filter($degreeProgrammeUids)));
+
+        if ($degreeProgrammeUids === []) {
+            return;
+        }
+
+        $missingDegreeProgrammeUids = array_values(array_filter(
+            $degreeProgrammeUids,
+            fn (string $degreeProgrammeUid): bool => false === array_key_exists(
+                $degreeProgrammeUid,
+                $this->degreeProgrammeResourcesRequestCache
+            )
+        ));
+
+        if ($missingDegreeProgrammeUids === []) {
+            return;
+        }
+
+        /** @var DegreeProgrammeResource $degreeProgrammeResource */
+        foreach ($this->getDegreeProgrammeApi()->getDegreeProgrammesByDegreeProgrammeUids($missingDegreeProgrammeUids) as $degreeProgrammeResource) {
+            if ($degreeProgrammeUid = $degreeProgrammeResource->getUid()) {
+                $this->degreeProgrammeResourcesRequestCache[$degreeProgrammeUid] = $degreeProgrammeResource;
+            }
+        }
+    }
+
+    /**
      * @return array<string, string>|null
      */
     private function getEmployeeAddress(string $personIdentifier, string $employeeAddressTypeAbbreviation): ?array
@@ -663,6 +782,24 @@ class PersonProvider extends AbstractAuthorizationService implements PersonProvi
         }
 
         return $this->userApi;
+    }
+
+    private function getStudiesApi(): StudiesApi
+    {
+        if ($this->studiesApi === null) {
+            $this->studiesApi = new StudiesApi($this->getConnection());
+        }
+
+        return $this->studiesApi;
+    }
+
+    private function getDegreeProgrammeApi(): DegreeProgrammeApi
+    {
+        if ($this->degreeProgrammeApi === null) {
+            $this->degreeProgrammeApi = new DegreeProgrammeApi($this->getConnection());
+        }
+
+        return $this->degreeProgrammeApi;
     }
 
     private function getConnection(): Connection
@@ -833,6 +970,106 @@ class PersonProvider extends AbstractAuthorizationService implements PersonProvi
         }
 
         return null;
+    }
+
+    /**
+     * @return array{key: string|null, name: string|null}
+     */
+    private function createStudyArray(StudiesResource $studyResource, array $options = []): array
+    {
+        $degreeProgrammeResource = null;
+
+        if ($degreeProgrammeUid = $studyResource->getDegreeProgrammeUid()) {
+            $degreeProgrammeResource = $this->degreeProgrammeResourcesRequestCache[$degreeProgrammeUid] ?? null;
+        }
+
+        return [
+            'key' => $degreeProgrammeResource?->getIdentifier(),
+            'name' => $degreeProgrammeResource !== null ? $this->buildDegreeProgrammeName($degreeProgrammeResource, $options) : null,
+        ];
+    }
+
+    private function buildDegreeProgrammeName(DegreeProgrammeResource $degreeProgrammeResource, array $options = []): ?string
+    {
+        $language = Options::getLanguage($options) ?? self::DEFAULT_LANGUAGE_TAG;
+        $partialDegreeProgrammes = $degreeProgrammeResource->getPartialDegreeProgrammes();
+
+        if ($partialDegreeProgrammes === []) {
+            return self::getLocalizedName($degreeProgrammeResource->getSubjectName(), $language);
+        }
+
+        $identifierCodes = self::extractCodesFromDegreeProgrammeIdentifier($degreeProgrammeResource->getIdentifier());
+
+        if ($identifierCodes === []) {
+            return self::getLocalizedName($degreeProgrammeResource->getSubjectName(), $language);
+        }
+
+        $partialDegreeProgrammesBySubjectCode = [];
+
+        foreach ($partialDegreeProgrammes as $partialDegreeProgramme) {
+            $subjectCode = $partialDegreeProgramme->getSubjectCode();
+
+            if ($subjectCode === null) {
+                continue;
+            }
+
+            $partialDegreeProgrammesBySubjectCode[$subjectCode] = $partialDegreeProgramme;
+        }
+
+        $names = [];
+
+        foreach ($identifierCodes as $identifierCode) {
+            $partialDegreeProgramme = $partialDegreeProgrammesBySubjectCode[$identifierCode] ?? null;
+
+            if ($partialDegreeProgramme === null) {
+                continue;
+            }
+
+            $name = self::getLocalizedName($partialDegreeProgramme->getSubjectName(), $language);
+
+            if ($name === null) {
+                continue;
+            }
+
+            $names[] = $name;
+        }
+
+        if ($names === []) {
+            return self::getLocalizedName($degreeProgrammeResource->getSubjectName(), $language);
+        }
+
+        return implode('; ', $names);
+    }
+
+    /**
+     * @param array<string, string>|null $namesByLanguage
+     */
+    private static function getLocalizedName(?array $namesByLanguage, string $language): ?string
+    {
+        return $namesByLanguage[$language]
+            ?? $namesByLanguage[self::DEFAULT_LANGUAGE_TAG]
+            ?? null;
+    }
+
+    /**
+     * @return string[]
+     */
+    private static function extractCodesFromDegreeProgrammeIdentifier(?string $identifier): array
+    {
+        if ($identifier === null) {
+            return [];
+        }
+
+        $parts = preg_split('/\s+/', trim($identifier));
+
+        if ($parts === false) {
+            return [];
+        }
+
+        return array_values(array_filter(
+            $parts,
+            static fn (string $part): bool => preg_match('/^\d+$/', $part) === 1
+        ));
     }
 
     /**
