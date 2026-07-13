@@ -528,9 +528,19 @@ class PersonProvider extends AbstractAuthorizationService implements PersonProvi
     {
         $this->requestCacheStudies();
 
+        if (false === array_key_exists($personIdentifier, $this->studiesRequestCache)) {
+            $this->studiesRequestCache[$personIdentifier] = [];
+
+            try {
+                $this->requestCacheStudiesForPersonUids([$personIdentifier]);
+            } catch (\Throwable $throwable) {
+                throw $this->dispatchException($throwable, 'failed to get studies from CO Study API');
+            }
+        }
+
         return array_map(
             fn (StudiesResource $studyResource): array => $this->createStudyArray($studyResource, $options),
-            $this->studiesRequestCache[$personIdentifier] ?? []
+            $this->studiesRequestCache[$personIdentifier]
         );
     }
 
@@ -636,52 +646,63 @@ class PersonProvider extends AbstractAuthorizationService implements PersonProvi
      */
     private function requestCacheStudies(): void
     {
-        if ($this->studiesRequestCache !== null) {
-            return;
+        if ($this->studiesRequestCache === null) {
+            $this->studiesRequestCache = array_fill_keys(array_keys($this->cachedPersonsRequestCache), []);
+
+            try {
+                $currentPersonIndex = 0;
+                while ($currentPersonIndex < count($this->cachedPersonsRequestCache)) {
+                    $personUids = array_keys(
+                        array_slice(
+                            $this->cachedPersonsRequestCache,
+                            $currentPersonIndex,
+                            self::MAX_NUM_PERSON_UIDS_PER_REQUEST,
+                            true
+                        )
+                    );
+
+                    $this->requestCacheStudiesForPersonUids($personUids);
+
+                    $currentPersonIndex += self::MAX_NUM_PERSON_UIDS_PER_REQUEST;
+                }
+            } catch (\Throwable $throwable) {
+                throw $this->dispatchException($throwable, 'failed to get studies from CO Study API');
+            }
         }
+    }
 
-        $this->studiesRequestCache = array_fill_keys(array_keys($this->cachedPersonsRequestCache), []);
+    /**
+     * @param string[] $personUids
+     */
+    private function requestCacheStudiesForPersonUids(array $personUids): void
+    {
+        $studyResources = [];
+        $degreeProgrammeUids = [];
 
-        try {
-            $studies = [];
-            $degreeProgrammeUids = [];
-
-            $currentPersonIndex = 0;
-            while ($currentPersonIndex < count($this->cachedPersonsRequestCache)) {
-                $personUids = array_keys(
-                    array_slice(
-                        $this->cachedPersonsRequestCache,
-                        $currentPersonIndex,
-                        self::MAX_NUM_PERSON_UIDS_PER_REQUEST,
-                        true
-                    )
-                );
-
-                /** @var StudiesResource $studyResource */
-                foreach ($this->getStudiesApi()->getStudiesByPersonUids($personUids) as $studyResource) {
-                    $studies[] = $studyResource;
-
-                    if ($degreeProgrammeUid = $studyResource->getDegreeProgrammeUid()) {
-                        $degreeProgrammeUids[$degreeProgrammeUid] = null;
-                    }
-                }
-
-                $currentPersonIndex += self::MAX_NUM_PERSON_UIDS_PER_REQUEST;
-            }
-
-            $this->requestCacheDegreeProgrammes(array_keys($degreeProgrammeUids));
-
-            foreach ($studies as $studyResource) {
+        if ([] !== $personUids) {
+            /** @var StudiesResource $studyResource */
+            foreach ($this->getStudiesApi()->getStudiesByPersonUids($personUids) as $studyResource) {
                 $personUid = $studyResource->getPersonUid();
+                $degreeProgrammeUid = $studyResource->getDegreeProgrammeUid();
 
-                if ($personUid === null) {
-                    continue;
+                if ($personUid !== null && $degreeProgrammeUid !== null) {
+                    $studyResources[] = $studyResource;
+                    $degreeProgrammeUids[$degreeProgrammeUid] = $degreeProgrammeUid;
                 }
-
-                $this->studiesRequestCache[$personUid][] = $studyResource;
             }
-        } catch (\Throwable $throwable) {
-            throw $this->dispatchException($throwable, 'failed to get studies from CO Study API');
+
+            $this->requestCacheDegreeProgrammes(array_values($degreeProgrammeUids));
+
+            foreach ($studyResources as $studyResource) {
+                $personUid = $studyResource->getPersonUid();
+                $degreeProgrammeUid = $studyResource->getDegreeProgrammeUid();
+
+                if ($personUid !== null
+                    && $degreeProgrammeUid !== null
+                    && array_key_exists($degreeProgrammeUid, $this->degreeProgrammeResourcesRequestCache)) {
+                    $this->studiesRequestCache[$personUid][] = $studyResource;
+                }
+            }
         }
     }
 
@@ -690,28 +711,22 @@ class PersonProvider extends AbstractAuthorizationService implements PersonProvi
      */
     private function requestCacheDegreeProgrammes(array $degreeProgrammeUids): void
     {
-        $degreeProgrammeUids = array_values(array_unique(array_filter($degreeProgrammeUids)));
+        $missingDegreeProgrammeUids = [];
 
-        if ($degreeProgrammeUids === []) {
-            return;
+        foreach (array_unique($degreeProgrammeUids) as $degreeProgrammeUid) {
+            if (false === array_key_exists($degreeProgrammeUid, $this->degreeProgrammeResourcesRequestCache)) {
+                $missingDegreeProgrammeUids[] = $degreeProgrammeUid;
+            }
         }
 
-        $missingDegreeProgrammeUids = array_values(array_filter(
-            $degreeProgrammeUids,
-            fn (string $degreeProgrammeUid): bool => false === array_key_exists(
-                $degreeProgrammeUid,
-                $this->degreeProgrammeResourcesRequestCache
-            )
-        ));
+        if ([] !== $missingDegreeProgrammeUids) {
+            /** @var DegreeProgrammeResource $degreeProgrammeResource */
+            foreach ($this->getDegreeProgrammeApi()->getDegreeProgrammesByDegreeProgrammeUids($missingDegreeProgrammeUids) as $degreeProgrammeResource) {
+                $degreeProgrammeUid = $degreeProgrammeResource->getUid();
 
-        if ($missingDegreeProgrammeUids === []) {
-            return;
-        }
-
-        /** @var DegreeProgrammeResource $degreeProgrammeResource */
-        foreach ($this->getDegreeProgrammeApi()->getDegreeProgrammesByDegreeProgrammeUids($missingDegreeProgrammeUids) as $degreeProgrammeResource) {
-            if ($degreeProgrammeUid = $degreeProgrammeResource->getUid()) {
-                $this->degreeProgrammeResourcesRequestCache[$degreeProgrammeUid] = $degreeProgrammeResource;
+                if ($degreeProgrammeUid !== null) {
+                    $this->degreeProgrammeResourcesRequestCache[$degreeProgrammeUid] = $degreeProgrammeResource;
+                }
             }
         }
     }
@@ -977,15 +992,14 @@ class PersonProvider extends AbstractAuthorizationService implements PersonProvi
      */
     private function createStudyArray(StudiesResource $studyResource, array $options = []): array
     {
-        $degreeProgrammeResource = null;
+        $degreeProgrammeUid = $studyResource->getDegreeProgrammeUid();
+        assert($degreeProgrammeUid !== null);
 
-        if ($degreeProgrammeUid = $studyResource->getDegreeProgrammeUid()) {
-            $degreeProgrammeResource = $this->degreeProgrammeResourcesRequestCache[$degreeProgrammeUid] ?? null;
-        }
+        $degreeProgrammeResource = $this->degreeProgrammeResourcesRequestCache[$degreeProgrammeUid];
 
         return [
-            'key' => $degreeProgrammeResource?->getIdentifier(),
-            'name' => $degreeProgrammeResource !== null ? $this->buildDegreeProgrammeName($degreeProgrammeResource, $options) : null,
+            'key' => $degreeProgrammeResource->getIdentifier(),
+            'name' => $this->buildDegreeProgrammeName($degreeProgrammeResource, $options),
         ];
     }
 
@@ -993,52 +1007,37 @@ class PersonProvider extends AbstractAuthorizationService implements PersonProvi
     {
         $language = Options::getLanguage($options) ?? self::DEFAULT_LANGUAGE_TAG;
         $partialDegreeProgrammes = $degreeProgrammeResource->getPartialDegreeProgrammes();
-
-        if ($partialDegreeProgrammes === []) {
-            return self::getLocalizedName($degreeProgrammeResource->getSubjectName(), $language);
-        }
-
         $identifierCodes = self::extractCodesFromDegreeProgrammeIdentifier($degreeProgrammeResource->getIdentifier());
-
-        if ($identifierCodes === []) {
-            return self::getLocalizedName($degreeProgrammeResource->getSubjectName(), $language);
-        }
-
-        $partialDegreeProgrammesBySubjectCode = [];
-
-        foreach ($partialDegreeProgrammes as $partialDegreeProgramme) {
-            $subjectCode = $partialDegreeProgramme->getSubjectCode();
-
-            if ($subjectCode === null) {
-                continue;
-            }
-
-            $partialDegreeProgrammesBySubjectCode[$subjectCode] = $partialDegreeProgramme;
-        }
 
         $names = [];
 
-        foreach ($identifierCodes as $identifierCode) {
-            $partialDegreeProgramme = $partialDegreeProgrammesBySubjectCode[$identifierCode] ?? null;
+        if ([] !== $partialDegreeProgrammes && [] !== $identifierCodes) {
+            $partialDegreeProgrammesBySubjectCode = [];
 
-            if ($partialDegreeProgramme === null) {
-                continue;
+            foreach ($partialDegreeProgrammes as $partialDegreeProgramme) {
+                $subjectCode = $partialDegreeProgramme->getSubjectCode();
+
+                if ($subjectCode !== null) {
+                    $partialDegreeProgrammesBySubjectCode[$subjectCode] = $partialDegreeProgramme;
+                }
             }
 
-            $name = self::getLocalizedName($partialDegreeProgramme->getSubjectName(), $language);
+            foreach ($identifierCodes as $identifierCode) {
+                $partialDegreeProgramme = $partialDegreeProgrammesBySubjectCode[$identifierCode] ?? null;
 
-            if ($name === null) {
-                continue;
+                if ($partialDegreeProgramme !== null) {
+                    $name = self::getLocalizedName($partialDegreeProgramme->getSubjectName(), $language);
+
+                    if ($name !== null) {
+                        $names[] = $name;
+                    }
+                }
             }
-
-            $names[] = $name;
         }
 
-        if ($names === []) {
-            return self::getLocalizedName($degreeProgrammeResource->getSubjectName(), $language);
-        }
-
-        return implode('; ', $names);
+        return [] !== $names
+            ? implode('; ', $names)
+            : self::getLocalizedName($degreeProgrammeResource->getSubjectName(), $language);
     }
 
     /**
@@ -1046,6 +1045,10 @@ class PersonProvider extends AbstractAuthorizationService implements PersonProvi
      */
     private static function getLocalizedName(?array $namesByLanguage, string $language): ?string
     {
+        if ($namesByLanguage === null) {
+            return null;
+        }
+
         return $namesByLanguage[$language]
             ?? $namesByLanguage[self::DEFAULT_LANGUAGE_TAG]
             ?? null;

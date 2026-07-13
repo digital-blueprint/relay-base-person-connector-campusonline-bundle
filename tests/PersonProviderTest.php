@@ -9,6 +9,7 @@ use Dbp\Relay\BasePersonBundle\Entity\Person;
 use Dbp\Relay\BasePersonConnectorCampusonlineBundle\Entity\CachedPerson;
 use Dbp\Relay\BasePersonConnectorCampusonlineBundle\TestUtils\TestPersonProvider;
 use Dbp\Relay\CoreBundle\Rest\Options;
+use GuzzleHttp\Psr7\Response;
 use Symfony\Component\Cache\Adapter\ArrayAdapter;
 
 /**
@@ -294,8 +295,8 @@ class PersonProviderTest extends ApiTestCase
     {
         // getting username/address should trigger a new user/person claims api request
         $this->testPersonProvider->mockApiResponses([
-            new \GuzzleHttp\Psr7\Response(200, ['Content-Type' => 'application/json'], $this->testPersonProvider->getPersonClaimsApiTestResponse()),
-            new \GuzzleHttp\Psr7\Response(200, ['Content-Type' => 'application/json'], $this->testPersonProvider->getUserApiTestResponse()),
+            new Response(200, ['Content-Type' => 'application/json'], $this->testPersonProvider->getPersonClaimsApiTestResponse()),
+            new Response(200, ['Content-Type' => 'application/json'], $this->testPersonProvider->getUserApiTestResponse()),
         ]);
 
         $options = [];
@@ -647,6 +648,80 @@ class PersonProviderTest extends ApiTestCase
         $this->assertTrue($this->testPersonProvider->wereApiResponsesConsumed());
     }
 
+    public function testGetStudiesFromApiCachedRequestsPersonOutsideCurrentResultSet(): void
+    {
+        $this->testPersonProvider->mockStudiesApiResponses();
+
+        $studies = $this->testPersonProvider->getStudiesFromApiCached(self::STAFF_USER_IDENTIFIER);
+
+        $this->assertSame([
+            [
+                'key' => 'UB 032 348 363',
+                'name' => 'Bachelorstudium Mehrsprachigkeit, Translation und digitale Kommunikation; Studienrichtung Italienisch; Studienrichtung Serbokroatisch',
+            ],
+        ], $studies);
+
+        $this->assertTrue($this->testPersonProvider->wereApiResponsesConsumed());
+    }
+
+    public function testGetStudiesFromApiCachedIgnoresStudiesWithoutDegreeProgrammeUid(): void
+    {
+        $this->testPersonProvider->mockApiResponses([
+            new Response(
+                200,
+                ['Content-Type' => 'application/json'],
+                json_encode([
+                    'items' => [
+                        [
+                            'uid' => '195685',
+                            'personUid' => self::STAFF_USER_IDENTIFIER,
+                            'curriculumVersionUid' => '618',
+                            'registrationStatusType' => 'Z',
+                        ],
+                    ],
+                ], JSON_THROW_ON_ERROR)
+            ),
+        ]);
+
+        $studies = $this->testPersonProvider->getStudiesFromApiCached(self::STAFF_USER_IDENTIFIER);
+
+        $this->assertSame([], $studies);
+        $this->assertTrue($this->testPersonProvider->wereApiResponsesConsumed());
+    }
+
+    public function testGetStudiesFromApiCachedIgnoresStudiesWithoutDegreeProgrammeResource(): void
+    {
+        $this->testPersonProvider->mockApiResponses([
+            new Response(
+                200,
+                ['Content-Type' => 'application/json'],
+                json_encode([
+                    'items' => [
+                        [
+                            'uid' => '195685',
+                            'personUid' => self::STAFF_USER_IDENTIFIER,
+                            'degreeProgrammeUid' => 'does-not-exist',
+                            'curriculumVersionUid' => '618',
+                            'registrationStatusType' => 'Z',
+                        ],
+                    ],
+                ], JSON_THROW_ON_ERROR)
+            ),
+            new Response(
+                200,
+                ['Content-Type' => 'application/json'],
+                json_encode([
+                    'items' => [],
+                ], JSON_THROW_ON_ERROR)
+            ),
+        ]);
+
+        $studies = $this->testPersonProvider->getStudiesFromApiCached(self::STAFF_USER_IDENTIFIER);
+
+        $this->assertSame([], $studies);
+        $this->assertTrue($this->testPersonProvider->wereApiResponsesConsumed());
+    }
+
     public function testGetPersonsWithLocalDataNewUserApiRequestNotFound(): void
     {
         // getting username should trigger a new user api request
@@ -695,8 +770,8 @@ class PersonProviderTest extends ApiTestCase
     {
         // getting username/address should trigger a new user/person claims api request
         $this->testPersonProvider->mockApiResponses([
-            new \GuzzleHttp\Psr7\Response(200, ['Content-Type' => 'application/json'], $this->testPersonProvider->getPersonClaimsApiTestResponse()),
-            new \GuzzleHttp\Psr7\Response(200, ['Content-Type' => 'application/json'], $this->testPersonProvider->getUserApiTestResponse()),
+            new Response(200, ['Content-Type' => 'application/json'], $this->testPersonProvider->getPersonClaimsApiTestResponse()),
+            new Response(200, ['Content-Type' => 'application/json'], $this->testPersonProvider->getUserApiTestResponse()),
         ]);
 
         $options = [];
