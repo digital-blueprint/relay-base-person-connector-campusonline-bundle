@@ -1,0 +1,31 @@
+{
+  "items": [
+    {
+      "uid": "195685",
+      "degreeProgrammeUid": "1410",
+      "personUid": "staff-id",
+      "curriculumVersionUid": "618",
+      "registrationStatusType": "Z",
+      "partialStudies": [
+        {
+          "uid": "195685_1",
+          "partialDegreeProgrammeUid": "1410_470",
+          "curriculumVersionUid": "619",
+          "registrationStatusType": "Z"
+        },
+        {
+          "uid": "195685_2",
+          "partialDegreeProgrammeUid": "1410_6486",
+          "curriculumVersionUid": "620",
+          "registrationStatusType": "Z"
+        },
+        {
+          "uid": "195685_3",
+          "partialDegreeProgrammeUid": "1410_479",
+          "curriculumVersionUid": "621",
+          "registrationStatusType": "Z"
+        }
+      ]
+    }
+  ]
+}

@@ -33,7 +33,7 @@ class TestPersonProvider extends PersonProvider
     public const EMPLOYEE_POSTAL_ADDRESS_ATTRIBUTE = 'employeePostalAddress';
     public const EMPLOYEE_WORK_ADDRESS_ATTRIBUTE = 'employeeWorkAddress';
     public const USERNAME_ATTRIBUTE = 'username';
-
+    public const STUDIES_ATTRIBUTE = 'studies';
     private const CONFIG = [
         Configuration::CURRENT_PERSON_IDENTIFIER_EXPRESSION_ATTRIBUTE => Configuration::CURRENT_PERSON_IDENTIFIER_EXPRESSION_ATTRIBUTE_DEFAULT,
         Configuration::CAMPUS_ONLINE_NODE => [
@@ -66,6 +66,11 @@ class TestPersonProvider extends PersonProvider
                 'local_data_attribute' => self::USERNAME_ATTRIBUTE,
                 'source_attribute' => PersonEventSubscriber::USERNAME_SOURCE_ATTRIBUTE,
                 'default_value' => '',
+            ],
+            [
+                'local_data_attribute' => self::STUDIES_ATTRIBUTE,
+                'source_attribute' => PersonEventSubscriber::STUDIES_SOURCE_ATTRIBUTE,
+                'default_value' => [],
             ],
         ],
     ];
@@ -135,6 +140,22 @@ class TestPersonProvider extends PersonProvider
         );
     }
 
+    public function mockStudiesApiResponses(): void
+    {
+        $this->mockApiResponses([
+            new Response(
+                200,
+                ['Content-Type' => 'application/json'],
+                self::getStudiesApiTestResponse()
+            ),
+            new Response(
+                200,
+                ['Content-Type' => 'application/json'],
+                self::getDegreeProgrammesApiTestResponse()
+            ),
+        ]);
+    }
+
     public function mockEmptyApiResponse(): void
     {
         $this->mockApiResponse(
@@ -192,6 +213,16 @@ class TestPersonProvider extends PersonProvider
     public static function getUserApiTestResponse(): string
     {
         return file_get_contents(__DIR__.'/users_api_response.json');
+    }
+
+    public static function getStudiesApiTestResponse(): string
+    {
+        return file_get_contents(__DIR__.'/studies_api_response.json');
+    }
+
+    public static function getDegreeProgrammesApiTestResponse(): string
+    {
+        return file_get_contents(__DIR__.'/degree_programmes_api_response.json');
     }
 
     public static function getEmptyApiTestResponse(): string
