@@ -529,8 +529,6 @@ class PersonProvider extends AbstractAuthorizationService implements PersonProvi
         $this->requestCacheStudies();
 
         if (false === array_key_exists($personIdentifier, $this->studiesRequestCache)) {
-            $this->studiesRequestCache[$personIdentifier] = [];
-
             try {
                 $this->requestCacheStudiesForPersonUids([$personIdentifier]);
             } catch (\Throwable $throwable) {
@@ -647,7 +645,7 @@ class PersonProvider extends AbstractAuthorizationService implements PersonProvi
     private function requestCacheStudies(): void
     {
         if ($this->studiesRequestCache === null) {
-            $this->studiesRequestCache = array_fill_keys(array_keys($this->cachedPersonsRequestCache), []);
+            $this->studiesRequestCache = [];
 
             try {
                 $currentPersonIndex = 0;
@@ -676,6 +674,16 @@ class PersonProvider extends AbstractAuthorizationService implements PersonProvi
      */
     private function requestCacheStudiesForPersonUids(array $personUids): void
     {
+        if ($this->studiesRequestCache === null) {
+            $this->studiesRequestCache = [];
+        }
+
+        foreach ($personUids as $personUid) {
+            if (false === array_key_exists($personUid, $this->studiesRequestCache)) {
+                $this->studiesRequestCache[$personUid] = [];
+            }
+        }
+
         $studyResources = [];
         $degreeProgrammeUids = [];
 
