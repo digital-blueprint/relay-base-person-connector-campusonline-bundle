@@ -276,6 +276,34 @@ class PersonProviderTest extends ApiTestCase
         $this->assertTrue($this->testPersonProvider->wereApiResponsesConsumed());
     }
 
+    public function testGetPersonWithLocalDataNewStudiesApiRequestFallsBackToDefaultLanguage(): void
+    {
+        $this->testPersonProvider->mockStudiesApiResponses();
+
+        $options = [];
+        Options::setLanguage($options, 'fr');
+        Options::requestLocalDataAttributes($options, [
+            self::STUDIES_ATTRIBUTE,
+        ]);
+
+        $person = $this->testPersonProvider->getPerson(self::STAFF_USER_IDENTIFIER, $options);
+
+        $this->assertCount(1, $person->getLocalData());
+        $this->assertArrayHasKey(self::STUDIES_ATTRIBUTE, $person->getLocalData());
+
+        $studies = $person->getLocalData()[self::STUDIES_ATTRIBUTE];
+
+        $this->assertIsArray($studies);
+        $this->assertCount(1, $studies);
+
+        $this->assertSame([
+            'key' => 'UB 032 348 363',
+            'name' => 'Bachelorstudium Mehrsprachigkeit, Translation und digitale Kommunikation; Studienrichtung Italienisch; Studienrichtung Serbokroatisch',
+        ], $studies[0]);
+
+        $this->assertTrue($this->testPersonProvider->wereApiResponsesConsumed());
+    }
+
     public function testGetPersonWithLocalDataNewUserApiRequestNotFound(): void
     {
         // getting username should trigger a new user api request

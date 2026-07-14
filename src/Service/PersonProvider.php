@@ -532,7 +532,7 @@ class PersonProvider extends AbstractAuthorizationService implements PersonProvi
             try {
                 $this->requestCacheStudiesForPersonUids([$personIdentifier]);
             } catch (\Throwable $throwable) {
-                throw $this->dispatchException($throwable, 'failed to get studies from CO Study API');
+                throw $this->dispatchException($throwable, 'failed to get studies from CO Studies API');
             }
         }
 
@@ -664,7 +664,7 @@ class PersonProvider extends AbstractAuthorizationService implements PersonProvi
                     $currentPersonIndex += self::MAX_NUM_PERSON_UIDS_PER_REQUEST;
                 }
             } catch (\Throwable $throwable) {
-                throw $this->dispatchException($throwable, 'failed to get studies from CO Study API');
+                throw $this->dispatchException($throwable, 'failed to get studies from CO Studies API');
             }
         }
     }
