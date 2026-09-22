@@ -4,18 +4,18 @@ declare(strict_types=1);
 
 namespace Dbp\Relay\BasePersonConnectorCampusonlineBundle\Tests;
 
-use ApiPlatform\Symfony\Bundle\Test\ApiTestCase;
 use Dbp\Relay\BasePersonBundle\Entity\Person;
 use Dbp\Relay\BasePersonConnectorCampusonlineBundle\Entity\CachedPerson;
 use Dbp\Relay\BasePersonConnectorCampusonlineBundle\TestUtils\TestPersonProvider;
 use Dbp\Relay\CoreBundle\Rest\Options;
 use GuzzleHttp\Psr7\Response;
+use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 use Symfony\Component\Cache\Adapter\ArrayAdapter;
 
 /**
  * TODO: add more persons to responses for reasonable pagination, search and filter tests.
  */
-class PersonProviderTest extends ApiTestCase
+class PersonProviderTest extends KernelTestCase
 {
     private const STAFF_USER_IDENTIFIER = TestPersonProvider::STAFF_USER_IDENTIFIER;
     private const STUDENT_USER_IDENTIFIER = TestPersonProvider::STUDENT_USER_IDENTIFIER;
