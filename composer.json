@@ -10,7 +10,7 @@
         "api-platform/openapi": "^4.2 || ^5.0",
         "dbp/campusonline-api": "^0.3.47",
         "dbp/relay-base-person-bundle": "^0.2.44",
-        "dbp/relay-core-bundle": "^0.1.240",
+        "dbp/relay-core-bundle": "^0.1.253",
         "doctrine/dbal": "^4.4",
         "doctrine/doctrine-migrations-bundle": "^3.7",
         "doctrine/migrations": "^3.9",
@@ -23,15 +23,11 @@
         "symfony/serializer": "^6.4 || ^7.4"
     },
     "require-dev": {
-        "api-platform/symfony": "^4.2 || ^5.0",
         "friendsofphp/php-cs-fixer": "^3.50",
         "phpstan/phpstan": "^2.1.17",
         "phpstan/phpstan-phpunit": "^2.0.6",
         "phpstan/phpstan-symfony": "^2.0.6",
         "phpunit/phpunit": "^11.1",
-        "symfony/browser-kit": "^6.4 || ^7.4",
-        "symfony/http-client": "^6.4 || ^7.4",
-        "symfony/monolog-bundle": "^3.10 || ^4.0",
         "symfony/phpunit-bridge": "^7.0.4",
         "symfony/runtime": "^6.4 || ^7.4"
     },
