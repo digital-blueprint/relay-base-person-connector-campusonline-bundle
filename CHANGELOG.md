@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-## v0.1.19
+## v0.1.20
 
 - Add support for api-platform 5.0
 
