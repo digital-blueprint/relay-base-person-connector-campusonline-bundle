@@ -6,8 +6,8 @@
     "require": {
         "php": ">=8.2",
         "ext-json": "*",
-        "api-platform/metadata": "^4.1",
-        "api-platform/openapi": "^4.1",
+        "api-platform/metadata": "^4.2 || ^5.0",
+        "api-platform/openapi": "^4.2 || ^5.0",
         "dbp/campusonline-api": "^0.3.47",
         "dbp/relay-base-person-bundle": "^0.2.44",
         "dbp/relay-core-bundle": "^0.1.240",
@@ -23,7 +23,7 @@
         "symfony/serializer": "^6.4 || ^7.4"
     },
     "require-dev": {
-        "api-platform/symfony": "^4.1",
+        "api-platform/symfony": "^4.2 || ^5.0",
         "friendsofphp/php-cs-fixer": "^3.50",
         "phpstan/phpstan": "^2.1.17",
         "phpstan/phpstan-phpunit": "^2.0.6",
