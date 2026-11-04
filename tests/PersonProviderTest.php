@@ -8,6 +8,7 @@ use Dbp\Relay\BasePersonBundle\Entity\Person;
 use Dbp\Relay\BasePersonConnectorCampusonlineBundle\Entity\CachedPerson;
 use Dbp\Relay\BasePersonConnectorCampusonlineBundle\TestUtils\TestPersonProvider;
 use Dbp\Relay\CoreBundle\Rest\Options;
+use Dbp\Relay\CoreBundle\Rest\Query\Filter\FilterTreeBuilder;
 use GuzzleHttp\Psr7\Response;
 use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 use Symfony\Component\Cache\Adapter\ArrayAdapter;
@@ -896,17 +897,36 @@ class PersonProviderTest extends KernelTestCase
         $this->assertNull($this->testPersonProvider->getPersonIdentifierByUsername('foo'));
     }
 
-    public function testGetPersonIdentifierByEmail(): void
+    public function testFilterPersonsByEmail(): void
     {
-        $this->testPersonProvider->mockUserApiResponse();
+        $cases = [
+            'eleanora.quill@someuni.example' => [self::STAFF_USER_IDENTIFIER],
+            'external@person.com' => [TestPersonProvider::EXTERNAL_USER_IDENTIFIER],
+            'missing@someuni.example' => [],
+        ];
 
-        $personIdentifier = $this->testPersonProvider->getPersonIdentifierByEmail('eleanora.quill@someuni.example');
-        $this->assertEquals('staff-id', $personIdentifier);
-        $this->assertTrue($this->testPersonProvider->wereApiResponsesConsumed());
-        $this->testPersonProvider->reset();
+        foreach ($cases as $email => $expectedIdentifiers) {
+            $options = [];
+            Options::setFilter($options, FilterTreeBuilder::create()
+                ->equals('localData.email', $email)
+                ->createFilter());
 
-        $this->testPersonProvider->mockEmptyApiResponse();
-        $this->assertNull($this->testPersonProvider->getPersonIdentifierByEmail('foo'));
+            $persons = $this->testPersonProvider->getPersons(1, 10, $options);
+            $this->assertSame($expectedIdentifiers, array_map(
+                static fn (Person $person): string => $person->getIdentifier(),
+                $persons
+            ), $email);
+        }
+    }
+
+    public function testFilterPersonsByEmailContains(): void
+    {
+        $options = [];
+        Options::setFilter($options, FilterTreeBuilder::create()
+            ->iContains('localData.email', 'SOMEUNI')
+            ->createFilter());
+
+        $this->assertCount(3, $this->testPersonProvider->getPersons(1, 10, $options));
     }
 
     public function testGetCurrentResultPersonIdentifiersItem(): void

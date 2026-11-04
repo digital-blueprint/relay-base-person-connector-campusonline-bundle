@@ -347,18 +347,6 @@ class PersonProvider extends AbstractAuthorizationService implements PersonProvi
         return $userResource?->getPersonUid();
     }
 
-    public function getPersonIdentifierByEmail(string $email): ?string
-    {
-        try {
-            /** @var ?UserResource $userResource */
-            $userResource = iterator_to_array($this->getUsersFromCOApi(['email' => $email])->getResources())[0] ?? null;
-        } catch (\Throwable $throwable) {
-            throw $this->dispatchException($throwable, 'failed to get users form CO Users API');
-        }
-
-        return $userResource?->getPersonUid();
-    }
-
     /**
      * May only be called during person cache re-creation, i.e. on @throws \Throwable.
      *
