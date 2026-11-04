@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v0.1.21
+
 - Remove getPersonIdentifierByEmail(); use local data email filtering against the person cache instead.
 
 ## v0.1.20
